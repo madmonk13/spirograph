@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>Spirograph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    touch-action: none; overscroll-behavior: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #222;
+  }
+  body { background: #fff; transition: background 0.25s, color 0.25s; }
+  body.dark { background: #000; color: #eee; }
+
+  #canvas-wrap { position: fixed; inset: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  #menu-btn {
+    position: fixed; top: max(16px, env(safe-area-inset-top)); left: 16px; z-index: 30;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.18);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  body.dark #menu-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); }
+  #menu-btn .bars { width: 22px; height: 16px; position: relative; }
+  #menu-btn .bars i { position: absolute; left: 0; right: 0; height: 2px; background: #333; border-radius: 1px; }
+  #menu-btn .bars i:nth-child(1) { top: 0; }
+  #menu-btn .bars i:nth-child(2) { top: 7px; }
+  #menu-btn .bars i:nth-child(3) { top: 14px; }
+  body.dark #menu-btn .bars i { background: #f0f0f0; }
+
+  #drawer {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 86%; max-width: 360px;
+    background: #fff;
+    transform: translateX(-102%); transition: transform 0.28s cubic-bezier(0.2,0.7,0.2,1);
+    z-index: 40; overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+    padding: max(20px, env(safe-area-inset-top)) 20px 30px 20px;
+  }
+  body.dark #drawer { background: #161616; color: #eee; box-shadow: 4px 0 24px rgba(0,0,0,0.6); }
+  #drawer.open { transform: translateX(0); }
+
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    z-index: 35;
+  }
+  #overlay.open { opacity: 1; pointer-events: auto; }
+
+  .drawer-title { font-size: 18px; font-weight: 600; margin-bottom: 18px; }
+
+  .section { margin-bottom: 22px; }
+  .section h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+    color: #888; margin-bottom: 10px; font-weight: 600;
+  }
+  body.dark .section h3 { color: #999; }
+  .section .note { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.4; }
+  body.dark .section .note { color: #999; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    padding: 9px 14px; border-radius: 22px; border: 1px solid #ddd;
+    background: #fff; color: #333; cursor: pointer; font-size: 13px;
+    transition: all 0.15s; user-select: none;
+  }
+  body.dark .chip { background: #232323; color: #eee; border-color: #3a3a3a; }
+  .chip.active { background: #222; color: #fff; border-color: #222; }
+  body.dark .chip.active { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+
+  .colors { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .color {
+    aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+  }
+  .color.active { border-color: #222; transform: scale(1.08); }
+  body.dark .color.active { border-color: #fff; }
+
+  .cogs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cog-btn {
+    aspect-ratio: 1; border: 1px solid #ddd; border-radius: 10px;
+    background: #fff; cursor: pointer; padding: 6px;
+    color: #555; transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  body.dark .cog-btn { background: #232323; border-color: #3a3a3a; color: #ccc; }
+  .cog-btn.active { border-color: #222; border-width: 2px; padding: 5px; }
+  body.dark .cog-btn.active { border-color: #fff; }
+  .cog-btn svg { width: 100%; height: 100%; display: block; }
+  .cog-btn .lbl {
+    position: absolute; bottom: 3px; right: 5px; font-size: 9px; color: #888;
+    pointer-events: none;
+  }
+  body.dark .cog-btn .lbl { color: #aaa; }
+
+  .slider-wrap { display: flex; align-items: center; gap: 12px; }
+  .slider-wrap input[type=range] { flex: 1; min-width: 0; }
+  .slider-wrap .val {
+    font-size: 13px; min-width: 42px; text-align: right;
+    color: #666; font-variant-numeric: tabular-nums;
+  }
+  body.dark .slider-wrap .val { color: #aaa; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; background: #e0e0e0; border-radius: 2px; outline: none;
+  }
+  body.dark input[type=range] { background: #3a3a3a; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px; border-radius: 50%; background: #222;
+    cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; background: #222;
+    cursor: pointer; border: none;
+  }
+  body.dark input[type=range]::-webkit-slider-thumb { background: #f0f0f0; }
+  body.dark input[type=range]::-moz-range-thumb { background: #f0f0f0; }
+
+  .actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn {
+    flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd;
+    background: #fff; color: #333; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  body.dark .btn { background: #232323; color: #eee; border-color: #3a3a3a; }
+  .btn.primary { background: #222; color: #fff; border-color: #222; }
+  body.dark .btn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+  .btn:active { transform: scale(0.98); }
+
+  .float-controls {
+    position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); right: 16px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 25;
+  }
+  .fbtn {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.18);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #333;
+  }
+  .fbtn.small { width: 44px; height: 44px; }
+  body.dark .fbtn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
+  .fbtn svg { width: 22px; height: 22px; }
+  .fbtn.primary { background: #222; color: #fff; border-color: #222; }
+  body.dark .fbtn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+
+  #hint {
+    position: fixed; bottom: max(28px, env(safe-area-inset-bottom)); left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.78); color: #fff;
+    padding: 9px 16px; border-radius: 22px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    z-index: 5; white-space: nowrap;
+  }
+  #hint.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="canvas-wrap">
+    <canvas id="trail"></canvas>
+    <canvas id="gears"></canvas>
+  </div>
+
+  <button id="menu-btn" aria-label="Menu"><div class="bars"><i></i><i></i><i></i></div></button>
+
+  <div class="float-controls">
+    <button class="fbtn primary" id="fb-pause" aria-label="Play / Pause" title="Play / Pause">
+      <svg viewBox="0 0 24 24" fill="currentColor" id="pause-icon"><polygon points="7,4 20,12 7,20" /></svg>
+    </button>
+    <button class="fbtn small" id="fb-clear" aria-label="Clear" title="Clear">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+    </button>
+  </div>
+
+  <div id="overlay"></div>
+
+  <div id="drawer">
+    <div class="drawer-title">Spirograph</div>
+
+    <div class="section">
+      <h3>Rolling Cog</h3>
+      <div class="cogs" id="cogs"></div>
+    </div>
+
+    <div class="section">
+      <h3>Ink Color</h3>
+      <div class="colors" id="colors"></div>
+    </div>
+
+    <div class="section">
+      <h3>Fixed Piece</h3>
+      <div class="row">
+        <div class="chip active" data-fixed="ring">Ring (draw inside)</div>
+        <div class="chip" data-fixed="circle">Circle (draw outside)</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Circumference</h3>
+      <div class="slider-wrap">
+        <input type="range" id="size" min="20" max="100" value="70">
+        <span class="val" id="size-val">70%</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Pen Position</h3>
+      <div class="slider-wrap">
+        <input type="range" id="pen" min="5" max="100" value="70">
+        <span class="val" id="pen-val">70%</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Auto-Rotation Speed</h3>
+      <div class="slider-wrap">
+        <input type="range" id="speed" min="1" max="20" value="6">
+        <span class="val" id="speed-val">6</span>
+      </div>
+      <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand.</p>
+    </div>
+
+    <div class="section">
+      <h3>Background</h3>
+      <div class="row">
+        <div class="chip active" data-bg="white">White</div>
+        <div class="chip" data-bg="black">Black</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="actions">
+        <button class="btn" id="clear">Clear</button>
+        <button class="btn primary" id="save">Save PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="hint">Drag on the canvas to rotate</div>
+
+<script>
+(function(){
+  const trailCv = document.getElementById('trail');
+  const gearCv  = document.getElementById('gears');
+  const trailCtx = trailCv.getContext('2d');
+  const gearCtx  = gearCv.getContext('2d');
+
+  let W = 0, H = 0, cx = 0, cy = 0;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  // ROYGBIV
+  const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
+
+  // Cog catalog. Round cogs use the analytical hypotrochoid/epitrochoid.
+  // 'plus' and 'football' use the rolling-curve engine.
+  const COGS = [
+    { type: 'round',    name: 'XS',  ratio: 0.18 },
+    { type: 'round',    name: 'S',   ratio: 0.27 },
+    { type: 'round',    name: 'M',   ratio: 0.35 },
+    { type: 'round',    name: 'L',   ratio: 0.45 },
+    { type: 'round',    name: '½',   ratio: 0.50 },
+    { type: 'round',    name: '⅔',   ratio: 0.66 },
+    { type: 'round',    name: '¾',   ratio: 0.75 },
+    { type: 'round',    name: '⅖',   ratio: 0.40 },
+    { type: 'plus',     name: 'Plus',     scale: 0.40 },
+    { type: 'football', name: 'Football', scale: 0.55 },
+  ];
+
+  // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
+  const COG_DEFS = {
+    plus: {
+      // ρ(u) = 1 + a·cos(4u)  →  smooth four-armed plus
+      _a: 0.28,
+      maxExtent: 1.28,        // body extent for pen-position scaling
+      eval: function(u) {
+        const a = this._a;
+        const c = Math.cos(u),  s = Math.sin(u);
+        const c4 = Math.cos(4*u), s4 = Math.sin(4*u);
+        const rho  = 1 + a * c4;
+        const rhoP = -4 * a * s4;
+        return {
+          x: rho * c,
+          y: rho * s,
+          dx: rhoP * c - rho * s,
+          dy: rhoP * s + rho * c,
+        };
+      },
+    },
+    football: {
+      _a: 1.45, _b: 0.65,
+      maxExtent: 1.45,
+      eval: function(u) {
+        return {
+          x: this._a * Math.cos(u),
+          y: this._b * Math.sin(u),
+          dx: -this._a * Math.sin(u),
+          dy:  this._b * Math.cos(u),
+        };
+      },
+    },
+  };
+
+  // Build arc-length table for a cog body. Stores per-sample u, x, y, alpha,
+  // cumulative arc length s, and the total perimeter L.
+  function buildCogTable(def, samples = 1024) {
+    const tab = {
+      u:     new Float32Array(samples + 1),
+      x:     new Float32Array(samples + 1),
+      y:     new Float32Array(samples + 1),
+      s:     new Float32Array(samples + 1),
+      alpha: new Float32Array(samples + 1),
+    };
+    let cum = 0, prevX = 0, prevY = 0;
+    let prevAlpha = null, alphaUnwrap = 0;
+    for (let i = 0; i <= samples; i++) {
+      const u = (i / samples) * 2 * Math.PI;
+      const p = def.eval(u);
+      if (i > 0) {
+        const ddx = p.x - prevX, ddy = p.y - prevY;
+        cum += Math.sqrt(ddx*ddx + ddy*ddy);
+      }
+      let alpha = Math.atan2(p.dy, p.dx);
+      if (prevAlpha !== null) {
+        const diff = alpha - prevAlpha;
+        if (diff >  Math.PI) alphaUnwrap -= 2 * Math.PI;
+        if (diff < -Math.PI) alphaUnwrap += 2 * Math.PI;
+      }
+      prevAlpha = alpha;
+
+      tab.u[i]     = u;
+      tab.x[i]     = p.x;
+      tab.y[i]     = p.y;
+      tab.s[i]     = cum;
+      tab.alpha[i] = alpha + alphaUnwrap;
+      prevX = p.x; prevY = p.y;
+    }
+    tab.samples   = samples;
+    tab.perimeter = cum;
+    tab.alpha0    = tab.alpha[0];
+    return tab;
+  }
+
+  const COG_TABLES = {
+    plus:     buildCogTable(COG_DEFS.plus),
+    football: buildCogTable(COG_DEFS.football),
+  };
+
+  // Given a target arc length (in [0, perimeter)), find the corresponding u
+  // and interpolate stored values.
+  function lookupByS(tab, sTarget) {
+    const N = tab.samples;
+    let lo = 0, hi = N;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (tab.s[mid] <= sTarget) lo = mid; else hi = mid;
+    }
+    const span = (tab.s[hi] - tab.s[lo]) || 1;
+    const f = (sTarget - tab.s[lo]) / span;
+    return {
+      x:     tab.x[lo]     * (1-f) + tab.x[hi]     * f,
+      y:     tab.y[lo]     * (1-f) + tab.y[hi]     * f,
+      alpha: tab.alpha[lo] * (1-f) + tab.alpha[hi] * f,
+    };
+  }
+
+  // ---- State ----
+  const state = {
+    fixed: 'ring',         // 'ring' (draw inside) or 'circle' (draw outside)
+    cogIdx: 2,
+    sizeFrac: 0.70,
+    penFrac: 0.70,
+    color: COLORS[4],
+    bg: 'white',
+    speed: 6,
+    paused: true,          // default: manual mode
+    t: 0,                  // angle parameter around fixed circle (CCW)
+  };
+
+  const history = [];
+  let segId = 0;
+  let lastPen = null;
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cx = W / 2; cy = H / 2;
+    [trailCv, gearCv].forEach(cv => {
+      cv.width  = Math.floor(W * dpr);
+      cv.height = Math.floor(H * dpr);
+      cv.style.width  = W + 'px';
+      cv.style.height = H + 'px';
+      cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    redrawTrail();
+  }
+
+  function availableR() { return Math.min(W, H) / 2 - 24; }
+
+  function getR() {
+    const cog = COGS[state.cogIdx];
+    const avail = availableR();
+    if (state.fixed === 'circle') {
+      // Cog rolls outside fixed circle. Outermost reach = R + 2*cog_extent_in_units_of_R.
+      let cogReach;
+      if (cog.type === 'round') cogReach = cog.ratio;
+      else cogReach = cog.scale * COG_DEFS[cog.type].maxExtent;
+      return (avail / (1 + 2 * cogReach)) * state.sizeFrac;
+    }
+    // Cog rolls inside ring. The ring itself sets the outer reach.
+    return avail * state.sizeFrac;
+  }
+
+  // ---- Geometry: where is the gear and pen at parameter t? ----
+  function stateAt(t) {
+    const cog = COGS[state.cogIdx];
+    const R = getR();
+
+    if (cog.type === 'round') {
+      // Closed-form hypotrochoid / epitrochoid.
+      const r = R * cog.ratio;
+      const d = state.penFrac * r;
+      let gx, gy, px, py, theta;
+      if (state.fixed === 'circle') {
+        gx = cx + (R + r) * Math.cos(t);
+        gy = cy + (R + r) * Math.sin(t);
+        const k = (R + r) / r;
+        px = gx - d * Math.cos(k * t);
+        py = gy - d * Math.sin(k * t);
+        theta = k * t + Math.PI;
+      } else {
+        gx = cx + (R - r) * Math.cos(t);
+        gy = cy + (R - r) * Math.sin(t);
+        const k = (R - r) / r;
+        px = gx + d * Math.cos(k * t);
+        py = gy - d * Math.sin(k * t);
+        theta = -k * t;
+      }
+      return { gx, gy, px, py, R, r, theta, cog };
+    }
+
+    // Non-circular cog rolling on a circle of radius R.
+    const def   = COG_DEFS[cog.type];
+    const tab   = COG_TABLES[cog.type];
+    const scale = cog.scale * R;            // body scale in canvas units
+    const sFix  = R * t;                    // arc length on fixed circle (CCW)
+
+    // Sign convention: parametrise both surfaces CCW in their own frames.
+    //   internal rolling: contact on cog body advances CCW too →  sCog = +sFix
+    //   external rolling: contact on cog body advances CW       →  sCog = −sFix
+    const sCog = (state.fixed === 'circle') ? -sFix : sFix;
+    const sCogUnit = sCog / scale;
+
+    const L  = tab.perimeter;
+    const cycRaw = sCogUnit / L;
+    const cyc = Math.floor(cycRaw);
+    const sResid = sCogUnit - cyc * L;
+    const ev = lookupByS(tab, sResid);
+    const alphaCog = ev.alpha + cyc * 2 * Math.PI;
+
+    const alphaFix = Math.PI / 2 + t;
+    const Fx = cx + R * Math.cos(t);
+    const Fy = cy + R * Math.sin(t);
+
+    const theta = (state.fixed === 'circle')
+      ? alphaFix - alphaCog + Math.PI    // external
+      : alphaFix - alphaCog;             // internal
+
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+    // Cog body origin in fixed frame: T = F − Rot(θ)·C_body
+    const Cbx = scale * ev.x, Cby = scale * ev.y;
+    const Cbx_r = Cbx * cosT - Cby * sinT;
+    const Cby_r = Cbx * sinT + Cby * cosT;
+    const gx = Fx - Cbx_r;
+    const gy = Fy - Cby_r;
+
+    // Pen at (d_pen, 0) in body frame
+    const dPen = state.penFrac * def.maxExtent * scale;
+    const px = gx + dPen * cosT;
+    const py = gy + dPen * sinT;
+
+    return { gx, gy, px, py, R, scale, theta, cog };
+  }
+
+  // ---- Trail rendering ----
+  function redrawTrail() {
+    trailCtx.clearRect(0, 0, W, H);
+    if (history.length < 2) return;
+    trailCtx.lineCap = 'round';
+    trailCtx.lineJoin = 'round';
+    trailCtx.lineWidth = 1.8;
+    let started = false, lastSeg = -1, lastColor = null;
+    for (let i = 0; i < history.length; i++) {
+      const p = history[i];
+      const newPath = !started || p.seg !== lastSeg || p.color !== lastColor;
+      if (newPath) {
+        if (started) trailCtx.stroke();
+        trailCtx.beginPath();
+        trailCtx.strokeStyle = p.color;
+        trailCtx.moveTo(p.x, p.y);
+        started = true;
+      } else {
+        trailCtx.lineTo(p.x, p.y);
+      }
+      lastSeg = p.seg; lastColor = p.color;
+    }
+    if (started) trailCtx.stroke();
+  }
+
+  function drawFixedCircle(R) {
+    const lineColor = state.bg === 'white' ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.32)';
+    const fillColor = state.bg === 'white' ? 'rgba(0,0,0,0.045)' : 'rgba(255,255,255,0.06)';
+    gearCtx.lineWidth = 1.2;
+    gearCtx.strokeStyle = lineColor;
+
+    if (state.fixed === 'circle') {
+      gearCtx.fillStyle = fillColor;
+      gearCtx.beginPath(); gearCtx.arc(cx, cy, R, 0, Math.PI*2); gearCtx.fill(); gearCtx.stroke();
+    } else {
+      gearCtx.beginPath(); gearCtx.arc(cx, cy, R, 0, Math.PI*2); gearCtx.stroke();
+      gearCtx.beginPath(); gearCtx.arc(cx, cy, R + 10, 0, Math.PI*2); gearCtx.stroke();
+    }
+  }
+
+  function drawCog(s) {
+    const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
+    gearCtx.lineWidth = 1.2;
+    gearCtx.strokeStyle = accent;
+
+    if (s.cog.type === 'round') {
+      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
+    } else {
+      const tab = COG_TABLES[s.cog.type];
+      const cosT = Math.cos(s.theta), sinT = Math.sin(s.theta);
+      gearCtx.beginPath();
+      for (let i = 0; i <= tab.samples; i++) {
+        const xb = s.scale * tab.x[i], yb = s.scale * tab.y[i];
+        const x = s.gx + xb * cosT - yb * sinT;
+        const y = s.gy + xb * sinT + yb * cosT;
+        if (i === 0) gearCtx.moveTo(x, y); else gearCtx.lineTo(x, y);
+      }
+      gearCtx.closePath();
+      gearCtx.stroke();
+    }
+    // Body origin marker
+    gearCtx.fillStyle = accent;
+    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
+
+    // Pen line + dot
+    gearCtx.beginPath(); gearCtx.moveTo(s.gx, s.gy); gearCtx.lineTo(s.px, s.py); gearCtx.stroke();
+    gearCtx.fillStyle = state.color;
+    gearCtx.beginPath(); gearCtx.arc(s.px, s.py, 4.5, 0, Math.PI*2); gearCtx.fill();
+    gearCtx.lineWidth = 1.5;
+    gearCtx.strokeStyle = state.bg === 'white' ? '#fff' : '#000';
+    gearCtx.stroke();
+  }
+
+  function drawGears() {
+    gearCtx.clearRect(0, 0, W, H);
+    const s = stateAt(state.t);
+    drawFixedCircle(s.R);
+    drawCog(s);
+  }
+
+  function step(deltaT) {
+    if (deltaT === 0) return;
+    const subdivs = Math.max(1, Math.ceil(Math.abs(deltaT) * 80));
+    const dt = deltaT / subdivs;
+    trailCtx.lineCap = 'round';
+    trailCtx.lineJoin = 'round';
+    trailCtx.lineWidth = 1.8;
+    trailCtx.strokeStyle = state.color;
+    for (let i = 0; i < subdivs; i++) {
+      state.t += dt;
+      const s = stateAt(state.t);
+      if (lastPen) {
+        trailCtx.beginPath();
+        trailCtx.moveTo(lastPen.x, lastPen.y);
+        trailCtx.lineTo(s.px, s.py);
+        trailCtx.stroke();
+      }
+      history.push({ x: s.px, y: s.py, color: state.color, seg: segId });
+      lastPen = { x: s.px, y: s.py };
+    }
+  }
+
+  function breakSegment() {
+    segId++;
+    lastPen = null;
+  }
+
+  let prev = 0;
+  function frame(now) {
+    if (!prev) prev = now;
+    const dt = Math.min(0.05, (now - prev) / 1000);
+    prev = now;
+    if (!state.paused) step(dt * state.speed * 0.5);
+    drawGears();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- Manual rotation (when paused) ----
+  let dragging = false, lastAngle = 0;
+  function pointerXY(e) {
+    if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+  function pointerAngle(e) {
+    const p = pointerXY(e);
+    return Math.atan2(p.y - cy, p.x - cx);
+  }
+  function onDown(e) {
+    if (!state.paused) return;
+    e.preventDefault();
+    dragging = true;
+    lastAngle = pointerAngle(e);
+    if (lastPen === null) {
+      const s = stateAt(state.t);
+      lastPen = { x: s.px, y: s.py };
+    }
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const a = pointerAngle(e);
+    let delta = a - lastAngle;
+    if (delta > Math.PI)  delta -= 2 * Math.PI;
+    if (delta < -Math.PI) delta += 2 * Math.PI;
+    lastAngle = a;
+    step(delta);
+  }
+  function onUp() { dragging = false; }
+  gearCv.addEventListener('touchstart', onDown, { passive: false });
+  gearCv.addEventListener('touchmove',  onMove, { passive: false });
+  gearCv.addEventListener('touchend',   onUp);
+  gearCv.addEventListener('touchcancel', onUp);
+  gearCv.addEventListener('mousedown',  onDown);
+  window.addEventListener('mousemove',  onMove);
+  window.addEventListener('mouseup',    onUp);
+
+  // ---- UI: Colors ----
+  const colorsEl = document.getElementById('colors');
+  COLORS.forEach((c) => {
+    const el = document.createElement('div');
+    el.className = 'color' + (c === state.color ? ' active' : '');
+    el.style.background = c;
+    el.addEventListener('click', () => {
+      state.color = c;
+      breakSegment();
+      colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+    });
+    colorsEl.appendChild(el);
+  });
+
+  // ---- UI: Cogs ----
+  const cogsEl = document.getElementById('cogs');
+  function cogIconSVG(cog) {
+    if (cog.type === 'round') {
+      const r = 18 * cog.ratio;
+      const cxIn = 38 - r;
+      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
+        '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+        '<circle cx="' + (cxIn + r * 0.6) + '" cy="20" r="1.4" fill="currentColor"/>' +
+      '</svg>';
+    }
+    if (cog.type === 'plus') {
+      // Sample 64 points from the plus body for a nice icon outline
+      const def = COG_DEFS.plus;
+      const cxIcon = 24, cyIcon = 20, scale = 8;
+      let path = '';
+      for (let i = 0; i <= 64; i++) {
+        const u = (i / 64) * 2 * Math.PI;
+        const p = def.eval(u);
+        const x = (cxIcon + scale * p.x).toFixed(2);
+        const y = (cyIcon + scale * p.y).toFixed(2);
+        path += (i === 0 ? 'M' : 'L') + x + ',' + y;
+      }
+      path += 'Z';
+      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
+        '<path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<circle cx="24" cy="20" r="1.4" fill="currentColor"/>' +
+      '</svg>';
+    }
+    if (cog.type === 'football') {
+      const def = COG_DEFS.football;
+      const cxIcon = 22, cyIcon = 20;
+      const scale = 8;
+      const a = (def._a * scale).toFixed(2);
+      const b = (def._b * scale).toFixed(2);
+      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
+        '<ellipse cx="' + cxIcon + '" cy="' + cyIcon + '" rx="' + a + '" ry="' + b + '" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<circle cx="26" cy="20" r="1.4" fill="currentColor"/>' +
+      '</svg>';
+    }
+    return '';
+  }
+  COGS.forEach((cog, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'cog-btn' + (i === state.cogIdx ? ' active' : '');
+    btn.innerHTML = cogIconSVG(cog);
+    if (cog.type !== 'round') {
+      const lbl = document.createElement('div');
+      lbl.className = 'lbl';
+      lbl.textContent = cog.name;
+      btn.appendChild(lbl);
+    }
+    btn.title = cog.name;
+    btn.addEventListener('click', () => {
+      state.cogIdx = i;
+      state.t = 0;
+      breakSegment();
+      cogsEl.querySelectorAll('.cog-btn').forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    cogsEl.appendChild(btn);
+  });
+
+  // ---- UI: Fixed type ----
+  document.querySelectorAll('[data-fixed]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-fixed]').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      state.fixed = el.dataset.fixed;
+      state.t = 0;
+      breakSegment();
+    });
+  });
+
+  // ---- UI: Background ----
+  document.querySelectorAll('[data-bg]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-bg]').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      state.bg = el.dataset.bg;
+      document.body.classList.toggle('dark', state.bg === 'black');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', state.bg === 'black' ? '#000000' : '#ffffff');
+    });
+  });
+
+  // ---- UI: Sliders ----
+  function bindSlider(id, valId, suffix, cb) {
+    const sl = document.getElementById(id);
+    const vl = document.getElementById(valId);
+    const update = () => {
+      vl.textContent = sl.value + (suffix || '');
+      cb(parseFloat(sl.value));
+    };
+    sl.addEventListener('input', update);
+    update();
+  }
+  bindSlider('size',  'size-val',  '%', v => { state.sizeFrac = v / 100; breakSegment(); });
+  bindSlider('pen',   'pen-val',   '%', v => { state.penFrac  = v / 100; breakSegment(); });
+  bindSlider('speed', 'speed-val', '',  v => { state.speed = v; });
+
+  // ---- UI: Drawer buttons ----
+  function clearAll() {
+    history.length = 0;
+    trailCtx.clearRect(0, 0, W, H);
+    segId = 0;
+    lastPen = null;
+    state.t = 0;
+  }
+  document.getElementById('clear').addEventListener('click', clearAll);
+  document.getElementById('save').addEventListener('click', () => {
+    const c = document.createElement('canvas');
+    c.width = trailCv.width; c.height = trailCv.height;
+    const x = c.getContext('2d');
+    x.fillStyle = state.bg === 'white' ? '#ffffff' : '#000000';
+    x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(trailCv, 0, 0);
+    c.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'spirograph.png';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  });
+
+  // ---- UI: Floating buttons ----
+  const PLAY_ICON  = '<polygon points="7,4 20,12 7,20" />';
+  const PAUSE_ICON = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+  function syncPauseIcon() {
+    document.getElementById('pause-icon').innerHTML = state.paused ? PLAY_ICON : PAUSE_ICON;
+  }
+  document.getElementById('fb-pause').addEventListener('click', () => {
+    state.paused = !state.paused;
+    syncPauseIcon();
+    if (state.paused) {
+      showHint('Paused — drag to rotate', 1500);
+    } else {
+      const s = stateAt(state.t);
+      lastPen = { x: s.px, y: s.py };
+      showHint('Auto-rotating', 900);
+    }
+  });
+  document.getElementById('fb-clear').addEventListener('click', clearAll);
+  syncPauseIcon();
+
+  // ---- UI: Drawer ----
+  const drawer = document.getElementById('drawer');
+  const overlay = document.getElementById('overlay');
+  document.getElementById('menu-btn').addEventListener('click', () => {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  });
+  overlay.addEventListener('click', () => {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+  });
+
+  // ---- Hint toast ----
+  let hintTimer = null;
+  function showHint(text, ms) {
+    const h = document.getElementById('hint');
+    h.textContent = text;
+    h.classList.add('show');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => h.classList.remove('show'), ms || 1500);
+  }
+
+  // ---- Resize ----
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+
+  // ---- Boot ----
+  resize();
+  {
+    const s0 = stateAt(state.t);
+    lastPen = { x: s0.px, y: s0.py };
+  }
+  showHint('Drag to rotate · Tap ▶ to auto-rotate', 2600);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
