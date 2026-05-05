@@ -20,28 +20,35 @@
   #canvas-wrap { position: fixed; inset: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 
-  #menu-btn {
-    position: fixed; top: max(16px, env(safe-area-inset-top)); left: 16px; z-index: 30;
+  /* Top buttons */
+  .top-btn {
+    position: fixed; top: max(16px, env(safe-area-inset-top)); z-index: 30;
     width: 48px; height: 48px; border-radius: 50%;
     background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
     box-shadow: 0 2px 14px rgba(0,0,0,0.18);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #333;
   }
-  body.dark #menu-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); }
+  body.dark .top-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
+  #menu-btn { left: 16px; }
+  #lock-btn { right: 16px; }
   #menu-btn .bars { width: 22px; height: 16px; position: relative; }
-  #menu-btn .bars i { position: absolute; left: 0; right: 0; height: 2px; background: #333; border-radius: 1px; }
+  #menu-btn .bars i { position: absolute; left: 0; right: 0; height: 2px; background: currentColor; border-radius: 1px; }
   #menu-btn .bars i:nth-child(1) { top: 0; }
   #menu-btn .bars i:nth-child(2) { top: 7px; }
   #menu-btn .bars i:nth-child(3) { top: 14px; }
-  body.dark #menu-btn .bars i { background: #f0f0f0; }
+  #lock-btn svg { width: 22px; height: 22px; }
+  #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #c8a700; }
+  body.dark #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #ffd400; }
 
+  /* Drawer */
   #drawer {
     position: fixed; top: 0; left: 0; bottom: 0;
     width: 86%; max-width: 360px;
     background: #fff;
     transform: translateX(-102%); transition: transform 0.28s cubic-bezier(0.2,0.7,0.2,1);
-    z-index: 40; overflow-y: auto; overscroll-behavior: contain;
+    z-index: 40; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     box-shadow: 4px 0 24px rgba(0,0,0,0.15);
     padding: max(20px, env(safe-area-inset-top)) 20px 30px 20px;
   }
@@ -131,6 +138,7 @@
   body.dark .btn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
   .btn:active { transform: scale(0.98); }
 
+  /* Bottom-right floating controls */
   .float-controls {
     position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); right: 16px;
     display: flex; flex-direction: column; gap: 10px; z-index: 25;
@@ -149,6 +157,7 @@
   .fbtn.primary { background: #222; color: #fff; border-color: #222; }
   body.dark .fbtn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
 
+  /* Hint toast */
   #hint {
     position: fixed; bottom: max(28px, env(safe-area-inset-bottom)); left: 50%;
     transform: translateX(-50%);
@@ -158,6 +167,34 @@
     z-index: 5; white-space: nowrap;
   }
   #hint.show { opacity: 1; }
+
+  /* Hole picker modal */
+  #hole-modal {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(0,0,0,0.92);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #hole-modal.open { display: flex; }
+  #hole-modal .hole-cog {
+    width: 88vmin; height: 88vmin;
+    max-width: 540px; max-height: 540px;
+    color: #f0f0f0;
+  }
+  #hole-modal .hole-cog svg { width: 100%; height: 100%; display: block; }
+  #hole-modal .hole-modal-title {
+    position: absolute; top: max(20px, env(safe-area-inset-top)); left: 0; right: 0;
+    text-align: center; color: #ccc; font-size: 13px; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  #hole-modal-close {
+    position: absolute; top: max(16px, env(safe-area-inset-top)); right: 16px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    color: #f0f0f0; cursor: pointer;
+  }
+  #hole-modal-close svg { width: 18px; height: 18px; }
 </style>
 </head>
 <body>
@@ -166,7 +203,13 @@
     <canvas id="gears"></canvas>
   </div>
 
-  <button id="menu-btn" aria-label="Menu"><div class="bars"><i></i><i></i><i></i></div></button>
+  <button id="menu-btn" class="top-btn" aria-label="Menu"><div class="bars"><i></i><i></i><i></i></div></button>
+  <button id="lock-btn" class="top-btn" aria-label="Lock / Unlock ring">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="lock-icon">
+      <rect x="4.5" y="11" width="15" height="10" rx="2"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+    </svg>
+  </button>
 
   <div class="float-controls">
     <button class="fbtn primary" id="fb-pause" aria-label="Play / Pause" title="Play / Pause">
@@ -183,8 +226,9 @@
     <div class="drawer-title">Spirograph</div>
 
     <div class="section">
-      <h3>Rolling Cog</h3>
+      <h3>Rolling Cog &amp; Pen Hole</h3>
       <div class="cogs" id="cogs"></div>
+      <p class="note">Tap a cog to choose a pen hole.</p>
     </div>
 
     <div class="section">
@@ -209,20 +253,12 @@
     </div>
 
     <div class="section">
-      <h3>Pen Position</h3>
-      <div class="slider-wrap">
-        <input type="range" id="pen" min="5" max="100" value="70">
-        <span class="val" id="pen-val">70%</span>
-      </div>
-    </div>
-
-    <div class="section">
       <h3>Auto-Rotation Speed</h3>
       <div class="slider-wrap">
         <input type="range" id="speed" min="1" max="20" value="6">
         <span class="val" id="speed-val">6</span>
       </div>
-      <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand.</p>
+      <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Tap the lock (top-right) to move the ring.</p>
     </div>
 
     <div class="section">
@@ -243,6 +279,14 @@
 
   <div id="hint">Drag on the canvas to rotate</div>
 
+  <div id="hole-modal">
+    <div class="hole-modal-title" id="hole-modal-title">Choose a pen hole</div>
+    <button id="hole-modal-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5l-14 14"/></svg>
+    </button>
+    <div class="hole-cog" id="hole-cog"></div>
+  </div>
+
 <script>
 (function(){
   const trailCv = document.getElementById('trail');
@@ -256,28 +300,47 @@
   // ROYGBIV
   const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
 
-  // Round-cog catalog. ratio = r / R.
+  // Round-cog catalog. ratio = r / R. holes generated per cog.
   const COGS = [
-    { name: 'XS', ratio: 0.18 },
-    { name: 'S',  ratio: 0.27 },
-    { name: 'M',  ratio: 0.35 },
-    { name: 'L',  ratio: 0.45 },
-    { name: '½',  ratio: 0.50 },
-    { name: '⅔',  ratio: 0.66 },
-    { name: '¾',  ratio: 0.75 },
-    { name: '⅖',  ratio: 0.40 },
+    { name: 'XS', ratio: 0.18, nHoles: 9  },
+    { name: 'S',  ratio: 0.27, nHoles: 12 },
+    { name: 'M',  ratio: 0.35, nHoles: 15 },
+    { name: '⅖', ratio: 0.40, nHoles: 17 },
+    { name: 'L',  ratio: 0.45, nHoles: 19 },
+    { name: '½', ratio: 0.50, nHoles: 22 },
+    { name: '⅔', ratio: 0.66, nHoles: 27 },
+    { name: '¾', ratio: 0.75, nHoles: 32 },
   ];
+
+  // Archimedean spiral, like the original Spirograph wheels: holes step out
+  // along a tightly-wound spiral from near-center toward the rim. Turn count
+  // grows with hole count so larger cogs wind more times.
+  function buildHoles(n) {
+    const holes = [];
+    const minR = 0.22, maxR = 0.94;
+    const turns = Math.max(1.0, 0.5 + n * 0.06);
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const dist = minR + (maxR - minR) * t;
+      const ang = t * turns * 2 * Math.PI;
+      holes.push({ dist, ang });
+    }
+    return holes;
+  }
+  COGS.forEach(c => { c.holes = buildHoles(c.nHoles); });
 
   // ---- State ----
   const state = {
     fixed: 'ring',         // 'ring' (draw inside) or 'circle' (draw outside)
     cogIdx: 2,
+    holeIdx: 3,            // which hole on the cog
     sizeFrac: 0.70,
-    penFrac: 0.70,
     color: COLORS[4],
     bg: 'black',
     speed: 6,
     paused: true,          // default: manual mode
+    locked: true,          // ring is locked by default
+    ringX: 0, ringY: 0,    // ring center offset from canvas center
     t: 0,                  // angle parameter around fixed circle (CCW)
   };
   document.body.classList.add('dark');
@@ -285,6 +348,9 @@
   const history = [];
   let segId = 0;
   let lastPen = null;
+
+  function ringCx() { return cx + state.ringX; }
+  function ringCy() { return cy + state.ringY; }
 
   function resize() {
     W = window.innerWidth;
@@ -300,38 +366,48 @@
     redrawTrail();
   }
 
-  function availableR() { return Math.min(W, H) / 2 - 24; }
+  function availableR() {
+    // Fixed by canvas size — moving the ring doesn't resize it.
+    return Math.min(W, H) / 2 - 24;
+  }
 
   function getR() {
     const cog = COGS[state.cogIdx];
     const avail = availableR();
     if (state.fixed === 'circle') {
-      // Cog rolls outside fixed circle. Outermost reach = R + 2r = R(1 + 2·ratio).
       return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
     }
-    // Cog rolls inside ring. Ring itself sets the outer reach.
     return avail * state.sizeFrac;
   }
 
-  // Hypotrochoid (ring) / epitrochoid (circle).
+  // Pen position based on selected hole. Hole at body coords (hx, hy) where
+  // hx = dist*r*cos(ang), hy = dist*r*sin(ang). After body rotation θ_body:
+  //   pen_offset_fixed = (hx*cos θ - hy*sin θ, hx*sin θ + hy*cos θ)
+  // For hypotrochoid: θ_body = -k·t (k = (R-r)/r)
+  // For epitrochoid:  θ_body = +k·t + π (k = (R+r)/r)
   function stateAt(t) {
     const cog = COGS[state.cogIdx];
     const R = getR();
     const r = R * cog.ratio;
-    const d = state.penFrac * r;
+    const hole = cog.holes[state.holeIdx];
+    const hx = hole.dist * r * Math.cos(hole.ang);
+    const hy = hole.dist * r * Math.sin(hole.ang);
+    const RX = ringCx(), RY = ringCy();
     let gx, gy, px, py;
     if (state.fixed === 'circle') {
-      gx = cx + (R + r) * Math.cos(t);
-      gy = cy + (R + r) * Math.sin(t);
+      gx = RX + (R + r) * Math.cos(t);
+      gy = RY + (R + r) * Math.sin(t);
       const k = (R + r) / r;
-      px = gx - d * Math.cos(k * t);
-      py = gy - d * Math.sin(k * t);
+      const c = -Math.cos(k * t), s = -Math.sin(k * t);
+      px = gx + hx * c - hy * s;
+      py = gy + hx * s + hy * c;
     } else {
-      gx = cx + (R - r) * Math.cos(t);
-      gy = cy + (R - r) * Math.sin(t);
+      gx = RX + (R - r) * Math.cos(t);
+      gy = RY + (R - r) * Math.sin(t);
       const k = (R - r) / r;
-      px = gx + d * Math.cos(k * t);
-      py = gy - d * Math.sin(k * t);
+      const c = Math.cos(-k * t), s = Math.sin(-k * t);
+      px = gx + hx * c - hy * s;
+      py = gy + hx * s + hy * c;
     }
     return { gx, gy, px, py, R, r };
   }
@@ -362,22 +438,34 @@
 
   function drawFixedCircle(R) {
     const lineColor = state.bg === 'white' ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.32)';
-    const fillColor = state.bg === 'white' ? 'rgba(0,0,0,0.045)' : 'rgba(255,255,255,0.06)';
+    const fill = 'rgba(248,248,240,0.25)';
+    const RX = ringCx(), RY = ringCy();
     gearCtx.lineWidth = 1.2;
     gearCtx.strokeStyle = lineColor;
+    if (!state.locked) gearCtx.setLineDash([6, 4]);
 
     if (state.fixed === 'circle') {
-      gearCtx.fillStyle = fillColor;
-      gearCtx.beginPath(); gearCtx.arc(cx, cy, R, 0, Math.PI*2); gearCtx.fill(); gearCtx.stroke();
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R, 0, Math.PI*2); gearCtx.fill(); gearCtx.stroke();
     } else {
-      gearCtx.beginPath(); gearCtx.arc(cx, cy, R, 0, Math.PI*2); gearCtx.stroke();
-      gearCtx.beginPath(); gearCtx.arc(cx, cy, R + 10, 0, Math.PI*2); gearCtx.stroke();
+      // Ring band: fill the donut (R to R+10)
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath();
+      gearCtx.arc(RX, RY, R + 10, 0, Math.PI*2);
+      gearCtx.arc(RX, RY, R, 0, Math.PI*2);
+      gearCtx.fill('evenodd');
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R, 0, Math.PI*2); gearCtx.stroke();
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R + 10, 0, Math.PI*2); gearCtx.stroke();
     }
+    gearCtx.setLineDash([]);
   }
 
   function drawCog(s) {
     const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
+    const fill = 'rgba(248,248,240,0.25)';
     gearCtx.lineWidth = 1.2;
+    gearCtx.fillStyle = fill;
+    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.fill();
     gearCtx.strokeStyle = accent;
     gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
 
@@ -431,25 +519,41 @@
     if (!prev) prev = now;
     const dt = Math.min(0.05, (now - prev) / 1000);
     prev = now;
-    if (!state.paused) step(dt * state.speed * 0.5);
+    if (!state.paused && state.locked) step(dt * state.speed * 0.5);
     drawGears();
     requestAnimationFrame(frame);
   }
 
-  // ---- Manual rotation (when paused) ----
-  let dragging = false, lastAngle = 0;
+  // ---- Drag: rotate cog (locked + paused) OR move ring (unlocked) ----
+  let dragging = false, dragMode = null, lastAngle = 0;
+  let moveAnchorX = 0, moveAnchorY = 0;
+  let autoRelockTimer = null;
+  const AUTO_RELOCK_MS = 4000;
+
   function pointerXY(e) {
     if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
     return { x: e.clientX, y: e.clientY };
   }
   function pointerAngle(e) {
     const p = pointerXY(e);
-    return Math.atan2(p.y - cy, p.x - cx);
+    return Math.atan2(p.y - ringCy(), p.x - ringCx());
   }
   function onDown(e) {
+    const p = pointerXY(e);
+    if (!state.locked) {
+      e.preventDefault();
+      dragging = true;
+      dragMode = 'move';
+      moveAnchorX = p.x - state.ringX;
+      moveAnchorY = p.y - state.ringY;
+      clearTimeout(autoRelockTimer);
+      breakSegment();
+      return;
+    }
     if (!state.paused) return;
     e.preventDefault();
     dragging = true;
+    dragMode = 'rotate';
     lastAngle = pointerAngle(e);
     if (lastPen === null) {
       const s = stateAt(state.t);
@@ -459,14 +563,40 @@
   function onMove(e) {
     if (!dragging) return;
     e.preventDefault();
-    const a = pointerAngle(e);
-    let delta = a - lastAngle;
-    if (delta > Math.PI)  delta -= 2 * Math.PI;
-    if (delta < -Math.PI) delta += 2 * Math.PI;
-    lastAngle = a;
-    step(delta);
+    if (dragMode === 'move') {
+      const p = pointerXY(e);
+      state.ringX = p.x - moveAnchorX;
+      state.ringY = p.y - moveAnchorY;
+      // Clamp so the ring center stays within the canvas (it can extend past
+      // the edge, but its center can't leave the visible area).
+      state.ringX = Math.max(-cx, Math.min(cx, state.ringX));
+      state.ringY = Math.max(-cy, Math.min(cy, state.ringY));
+    } else if (dragMode === 'rotate') {
+      const a = pointerAngle(e);
+      let delta = a - lastAngle;
+      if (delta > Math.PI)  delta -= 2 * Math.PI;
+      if (delta < -Math.PI) delta += 2 * Math.PI;
+      lastAngle = a;
+      step(delta);
+    }
   }
-  function onUp() { dragging = false; }
+  function onUp() {
+    if (dragging && dragMode === 'move') {
+      scheduleAutoRelock();
+    }
+    dragging = false;
+    dragMode = null;
+  }
+  function scheduleAutoRelock() {
+    clearTimeout(autoRelockTimer);
+    autoRelockTimer = setTimeout(() => {
+      if (!state.locked) {
+        state.locked = true;
+        updateLockUI();
+        showHint('Ring locked', 1100);
+      }
+    }, AUTO_RELOCK_MS);
+  }
   gearCv.addEventListener('touchstart', onDown, { passive: false });
   gearCv.addEventListener('touchmove',  onMove, { passive: false });
   gearCv.addEventListener('touchend',   onUp);
@@ -486,30 +616,68 @@
       breakSegment();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
+      updateAllCogIndicators();
     });
     colorsEl.appendChild(el);
   });
 
   // ---- UI: Cogs ----
   const cogsEl = document.getElementById('cogs');
+  function cogButtonSVG(cog, holeIdx, color) {
+    const r = 18 * cog.ratio;
+    const cxIn = 38 - r;
+    const hole = cog.holes[holeIdx];
+    const hxRel = hole.dist * r * Math.cos(hole.ang);
+    const hyRel = hole.dist * r * Math.sin(hole.ang);
+    const dotX = (cxIn + hxRel).toFixed(2);
+    const dotY = (20 + hyRel).toFixed(2);
+    return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+      '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
+      '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+      '<circle class="cog-hole" cx="' + dotX + '" cy="' + dotY + '" r="1.6" fill="' + color + '"/>' +
+    '</svg>';
+  }
+  function previewHoleIdx(i) {
+    if (i === state.cogIdx) return state.holeIdx;
+    return matchHoleByFraction(COGS[state.cogIdx], state.holeIdx, COGS[i]);
+  }
+  function rebuildCogButton(i) {
+    const btn = cogsEl.children[i];
+    if (!btn) return;
+    btn.innerHTML = cogButtonSVG(COGS[i], previewHoleIdx(i), state.color);
+  }
+  function updateAllCogIndicators() {
+    for (let i = 0; i < COGS.length; i++) rebuildCogButton(i);
+  }
+  function setActiveCog(idx) {
+    cogsEl.querySelectorAll('.cog-btn').forEach((x, i) => x.classList.toggle('active', i === idx));
+  }
+  function matchHoleByFraction(oldCog, oldHoleIdx, newCog) {
+    const target = oldCog.holes[Math.min(oldHoleIdx, oldCog.holes.length - 1)].dist;
+    let best = 0, bestDiff = Infinity;
+    for (let i = 0; i < newCog.holes.length; i++) {
+      const diff = Math.abs(newCog.holes[i].dist - target);
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
+    }
+    return best;
+  }
+
   COGS.forEach((cog, i) => {
     const btn = document.createElement('div');
     btn.className = 'cog-btn' + (i === state.cogIdx ? ' active' : '');
-    const r = 18 * cog.ratio;
-    const cxIn = 38 - r;
-    btn.innerHTML =
-      '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
-        '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
-        '<circle cx="' + (cxIn + r * 0.6) + '" cy="20" r="1.4" fill="currentColor"/>' +
-      '</svg>';
     btn.title = cog.name;
+    btn.innerHTML = cogButtonSVG(cog, previewHoleIdx(i), state.color);
     btn.addEventListener('click', () => {
-      state.cogIdx = i;
-      state.t = 0;
-      breakSegment();
-      cogsEl.querySelectorAll('.cog-btn').forEach(x => x.classList.remove('active'));
-      btn.classList.add('active');
+      if (i !== state.cogIdx) {
+        const newHoleIdx = matchHoleByFraction(COGS[state.cogIdx], state.holeIdx, COGS[i]);
+        state.cogIdx = i;
+        state.holeIdx = newHoleIdx;
+        state.t = 0;
+        breakSegment();
+        setActiveCog(i);
+        updateAllCogIndicators();
+      }
+      openHolePicker();
     });
     cogsEl.appendChild(btn);
   });
@@ -549,7 +717,6 @@
     update();
   }
   bindSlider('size',  'size-val',  '%', v => { state.sizeFrac = v / 100; breakSegment(); });
-  bindSlider('pen',   'pen-val',   '%', v => { state.penFrac  = v / 100; breakSegment(); });
   bindSlider('speed', 'speed-val', '',  v => { state.speed = v; });
 
   // ---- UI: Drawer buttons ----
@@ -598,6 +765,34 @@
   document.getElementById('fb-clear').addEventListener('click', clearAll);
   syncPauseIcon();
 
+  // ---- UI: Lock button ----
+  const LOCK_CLOSED =
+    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
+    '<path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+  const LOCK_OPEN =
+    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
+    '<path d="M8 11V7a4 4 0 0 1 7.5-1.5"/>';
+  function updateLockUI() {
+    const btn = document.getElementById('lock-btn');
+    const icon = document.getElementById('lock-icon');
+    icon.innerHTML = state.locked ? LOCK_CLOSED : LOCK_OPEN;
+    btn.classList.toggle('unlocked', !state.locked);
+  }
+  document.getElementById('lock-btn').addEventListener('click', () => {
+    state.locked = !state.locked;
+    updateLockUI();
+    if (!state.locked) {
+      showHint('Drag to move ring · Auto-locks after 4s', 2000);
+      // Start the relock timer on entering unlocked mode too, in case user
+      // unlocks but doesn't drag.
+      scheduleAutoRelock();
+    } else {
+      clearTimeout(autoRelockTimer);
+      showHint('Ring locked', 900);
+    }
+  });
+  updateLockUI();
+
   // ---- UI: Drawer ----
   const drawer = document.getElementById('drawer');
   const overlay = document.getElementById('overlay');
@@ -608,6 +803,62 @@
   overlay.addEventListener('click', () => {
     drawer.classList.remove('open');
     overlay.classList.remove('open');
+  });
+
+  // ---- Hole picker modal ----
+  const holeModal = document.getElementById('hole-modal');
+  const holeCogEl = document.getElementById('hole-cog');
+  const holeTitle = document.getElementById('hole-modal-title');
+
+  function buildHoleModalSVG() {
+    const cog = COGS[state.cogIdx];
+    holeTitle.textContent = 'Cog ' + cog.name + ' · choose a pen hole';
+    // viewBox -1.1..1.1 so unit-cog coordinates map directly
+    let svg = '<svg viewBox="-1.1 -1.1 2.2 2.2" xmlns="http://www.w3.org/2000/svg">';
+    // Cog body
+    svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
+    // Center pivot
+    svg += '<circle cx="0" cy="0" r="0.025" fill="rgba(255,255,255,0.7)"/>';
+    // Holes
+    cog.holes.forEach((h, i) => {
+      const hx = (h.dist * Math.cos(h.ang)).toFixed(4);
+      const hy = (h.dist * Math.sin(h.ang)).toFixed(4);
+      const isActive = i === state.holeIdx;
+      const fill = isActive ? state.color : 'rgba(0,0,0,0.92)';
+      const stroke = isActive ? state.color : 'rgba(255,255,255,0.7)';
+      const sw = isActive ? '0.018' : '0.012';
+      svg += '<g data-hole="' + i + '">';
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="0.038" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+      // Larger transparent hit target
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="0.075" fill="rgba(0,0,0,0)" style="cursor:pointer"/>';
+      svg += '</g>';
+    });
+    svg += '</svg>';
+    holeCogEl.innerHTML = svg;
+    // Wire click handlers
+    holeCogEl.querySelectorAll('g[data-hole]').forEach(g => {
+      const i = parseInt(g.getAttribute('data-hole'), 10);
+      g.addEventListener('click', () => {
+        if (i !== state.holeIdx) {
+          state.holeIdx = i;
+          breakSegment();
+          updateAllCogIndicators();
+        }
+        closeHolePicker();
+      });
+    });
+  }
+  function openHolePicker() {
+    buildHoleModalSVG();
+    holeModal.classList.add('open');
+  }
+  function closeHolePicker() {
+    holeModal.classList.remove('open');
+  }
+  document.getElementById('hole-modal-close').addEventListener('click', closeHolePicker);
+  holeModal.addEventListener('click', (e) => {
+    // Click on backdrop (not on the cog or close button) closes
+    if (e.target === holeModal) closeHolePicker();
   });
 
   // ---- Hint toast ----
@@ -630,7 +881,7 @@
     const s0 = stateAt(state.t);
     lastPen = { x: s0.px, y: s0.py };
   }
-  showHint('Drag to rotate · Tap ▶ to auto-rotate', 2600);
+  showHint('Drag to rotate · Tap a cog to pick a hole', 2600);
   requestAnimationFrame(frame);
 })();
 </script>
