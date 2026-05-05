@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#000000">
 <title>Spirograph</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
@@ -90,17 +90,11 @@
     aspect-ratio: 1; border: 1px solid #ddd; border-radius: 10px;
     background: #fff; cursor: pointer; padding: 6px;
     color: #555; transition: border-color 0.15s, background 0.15s;
-    position: relative;
   }
   body.dark .cog-btn { background: #232323; border-color: #3a3a3a; color: #ccc; }
   .cog-btn.active { border-color: #222; border-width: 2px; padding: 5px; }
   body.dark .cog-btn.active { border-color: #fff; }
   .cog-btn svg { width: 100%; height: 100%; display: block; }
-  .cog-btn .lbl {
-    position: absolute; bottom: 3px; right: 5px; font-size: 9px; color: #888;
-    pointer-events: none;
-  }
-  body.dark .cog-btn .lbl { color: #aaa; }
 
   .slider-wrap { display: flex; align-items: center; gap: 12px; }
   .slider-wrap input[type=range] { flex: 1; min-width: 0; }
@@ -234,8 +228,8 @@
     <div class="section">
       <h3>Background</h3>
       <div class="row">
-        <div class="chip active" data-bg="white">White</div>
-        <div class="chip" data-bg="black">Black</div>
+        <div class="chip" data-bg="white">White</div>
+        <div class="chip active" data-bg="black">Black</div>
       </div>
     </div>
 
@@ -262,117 +256,17 @@
   // ROYGBIV
   const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
 
-  // Cog catalog. Round cogs use the analytical hypotrochoid/epitrochoid.
-  // 'plus' and 'football' use the rolling-curve engine.
+  // Round-cog catalog. ratio = r / R.
   const COGS = [
-    { type: 'round',    name: 'XS',  ratio: 0.18 },
-    { type: 'round',    name: 'S',   ratio: 0.27 },
-    { type: 'round',    name: 'M',   ratio: 0.35 },
-    { type: 'round',    name: 'L',   ratio: 0.45 },
-    { type: 'round',    name: '½',   ratio: 0.50 },
-    { type: 'round',    name: '⅔',   ratio: 0.66 },
-    { type: 'round',    name: '¾',   ratio: 0.75 },
-    { type: 'round',    name: '⅖',   ratio: 0.40 },
-    { type: 'plus',     name: 'Plus',     scale: 0.40 },
-    { type: 'football', name: 'Football', scale: 0.55 },
+    { name: 'XS', ratio: 0.18 },
+    { name: 'S',  ratio: 0.27 },
+    { name: 'M',  ratio: 0.35 },
+    { name: 'L',  ratio: 0.45 },
+    { name: '½',  ratio: 0.50 },
+    { name: '⅔',  ratio: 0.66 },
+    { name: '¾',  ratio: 0.75 },
+    { name: '⅖',  ratio: 0.40 },
   ];
-
-  // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
-  const COG_DEFS = {
-    plus: {
-      // ρ(u) = 1 + a·cos(4u)  →  smooth four-armed plus
-      _a: 0.28,
-      maxExtent: 1.28,        // body extent for pen-position scaling
-      eval: function(u) {
-        const a = this._a;
-        const c = Math.cos(u),  s = Math.sin(u);
-        const c4 = Math.cos(4*u), s4 = Math.sin(4*u);
-        const rho  = 1 + a * c4;
-        const rhoP = -4 * a * s4;
-        return {
-          x: rho * c,
-          y: rho * s,
-          dx: rhoP * c - rho * s,
-          dy: rhoP * s + rho * c,
-        };
-      },
-    },
-    football: {
-      _a: 1.45, _b: 0.65,
-      maxExtent: 1.45,
-      eval: function(u) {
-        return {
-          x: this._a * Math.cos(u),
-          y: this._b * Math.sin(u),
-          dx: -this._a * Math.sin(u),
-          dy:  this._b * Math.cos(u),
-        };
-      },
-    },
-  };
-
-  // Build arc-length table for a cog body. Stores per-sample u, x, y, alpha,
-  // cumulative arc length s, and the total perimeter L.
-  function buildCogTable(def, samples = 1024) {
-    const tab = {
-      u:     new Float32Array(samples + 1),
-      x:     new Float32Array(samples + 1),
-      y:     new Float32Array(samples + 1),
-      s:     new Float32Array(samples + 1),
-      alpha: new Float32Array(samples + 1),
-    };
-    let cum = 0, prevX = 0, prevY = 0;
-    let prevAlpha = null, alphaUnwrap = 0;
-    for (let i = 0; i <= samples; i++) {
-      const u = (i / samples) * 2 * Math.PI;
-      const p = def.eval(u);
-      if (i > 0) {
-        const ddx = p.x - prevX, ddy = p.y - prevY;
-        cum += Math.sqrt(ddx*ddx + ddy*ddy);
-      }
-      let alpha = Math.atan2(p.dy, p.dx);
-      if (prevAlpha !== null) {
-        const diff = alpha - prevAlpha;
-        if (diff >  Math.PI) alphaUnwrap -= 2 * Math.PI;
-        if (diff < -Math.PI) alphaUnwrap += 2 * Math.PI;
-      }
-      prevAlpha = alpha;
-
-      tab.u[i]     = u;
-      tab.x[i]     = p.x;
-      tab.y[i]     = p.y;
-      tab.s[i]     = cum;
-      tab.alpha[i] = alpha + alphaUnwrap;
-      prevX = p.x; prevY = p.y;
-    }
-    tab.samples   = samples;
-    tab.perimeter = cum;
-    tab.alpha0    = tab.alpha[0];
-    return tab;
-  }
-
-  const COG_TABLES = {
-    plus:     buildCogTable(COG_DEFS.plus),
-    football: buildCogTable(COG_DEFS.football),
-  };
-
-  // Given a target arc length (in [0, perimeter)), find the corresponding u
-  // and interpolate stored values.
-  function lookupByS(tab, sTarget) {
-    const N = tab.samples;
-    let lo = 0, hi = N;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (tab.s[mid] <= sTarget) lo = mid; else hi = mid;
-    }
-    const span = (tab.s[hi] - tab.s[lo]) || 1;
-    const f = (sTarget - tab.s[lo]) / span;
-    return {
-      x:     tab.x[lo]     * (1-f) + tab.x[hi]     * f,
-      y:     tab.y[lo]     * (1-f) + tab.y[hi]     * f,
-      alpha: tab.alpha[lo] * (1-f) + tab.alpha[hi] * f,
-    };
-  }
 
   // ---- State ----
   const state = {
@@ -381,11 +275,12 @@
     sizeFrac: 0.70,
     penFrac: 0.70,
     color: COLORS[4],
-    bg: 'white',
+    bg: 'black',
     speed: 6,
     paused: true,          // default: manual mode
     t: 0,                  // angle parameter around fixed circle (CCW)
   };
+  document.body.classList.add('dark');
 
   const history = [];
   let segId = 0;
@@ -411,89 +306,36 @@
     const cog = COGS[state.cogIdx];
     const avail = availableR();
     if (state.fixed === 'circle') {
-      // Cog rolls outside fixed circle. Outermost reach = R + 2*cog_extent_in_units_of_R.
-      let cogReach;
-      if (cog.type === 'round') cogReach = cog.ratio;
-      else cogReach = cog.scale * COG_DEFS[cog.type].maxExtent;
-      return (avail / (1 + 2 * cogReach)) * state.sizeFrac;
+      // Cog rolls outside fixed circle. Outermost reach = R + 2r = R(1 + 2·ratio).
+      return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
     }
-    // Cog rolls inside ring. The ring itself sets the outer reach.
+    // Cog rolls inside ring. Ring itself sets the outer reach.
     return avail * state.sizeFrac;
   }
 
-  // ---- Geometry: where is the gear and pen at parameter t? ----
+  // Hypotrochoid (ring) / epitrochoid (circle).
   function stateAt(t) {
     const cog = COGS[state.cogIdx];
     const R = getR();
-
-    if (cog.type === 'round') {
-      // Closed-form hypotrochoid / epitrochoid.
-      const r = R * cog.ratio;
-      const d = state.penFrac * r;
-      let gx, gy, px, py, theta;
-      if (state.fixed === 'circle') {
-        gx = cx + (R + r) * Math.cos(t);
-        gy = cy + (R + r) * Math.sin(t);
-        const k = (R + r) / r;
-        px = gx - d * Math.cos(k * t);
-        py = gy - d * Math.sin(k * t);
-        theta = k * t + Math.PI;
-      } else {
-        gx = cx + (R - r) * Math.cos(t);
-        gy = cy + (R - r) * Math.sin(t);
-        const k = (R - r) / r;
-        px = gx + d * Math.cos(k * t);
-        py = gy - d * Math.sin(k * t);
-        theta = -k * t;
-      }
-      return { gx, gy, px, py, R, r, theta, cog };
+    const r = R * cog.ratio;
+    const d = state.penFrac * r;
+    let gx, gy, px, py;
+    if (state.fixed === 'circle') {
+      gx = cx + (R + r) * Math.cos(t);
+      gy = cy + (R + r) * Math.sin(t);
+      const k = (R + r) / r;
+      px = gx - d * Math.cos(k * t);
+      py = gy - d * Math.sin(k * t);
+    } else {
+      gx = cx + (R - r) * Math.cos(t);
+      gy = cy + (R - r) * Math.sin(t);
+      const k = (R - r) / r;
+      px = gx + d * Math.cos(k * t);
+      py = gy - d * Math.sin(k * t);
     }
-
-    // Non-circular cog rolling on a circle of radius R.
-    const def   = COG_DEFS[cog.type];
-    const tab   = COG_TABLES[cog.type];
-    const scale = cog.scale * R;            // body scale in canvas units
-    const sFix  = R * t;                    // arc length on fixed circle (CCW)
-
-    // Sign convention: parametrise both surfaces CCW in their own frames.
-    //   internal rolling: contact on cog body advances CCW too →  sCog = +sFix
-    //   external rolling: contact on cog body advances CW       →  sCog = −sFix
-    const sCog = (state.fixed === 'circle') ? -sFix : sFix;
-    const sCogUnit = sCog / scale;
-
-    const L  = tab.perimeter;
-    const cycRaw = sCogUnit / L;
-    const cyc = Math.floor(cycRaw);
-    const sResid = sCogUnit - cyc * L;
-    const ev = lookupByS(tab, sResid);
-    const alphaCog = ev.alpha + cyc * 2 * Math.PI;
-
-    const alphaFix = Math.PI / 2 + t;
-    const Fx = cx + R * Math.cos(t);
-    const Fy = cy + R * Math.sin(t);
-
-    const theta = (state.fixed === 'circle')
-      ? alphaFix - alphaCog + Math.PI    // external
-      : alphaFix - alphaCog;             // internal
-
-    const cosT = Math.cos(theta), sinT = Math.sin(theta);
-
-    // Cog body origin in fixed frame: T = F − Rot(θ)·C_body
-    const Cbx = scale * ev.x, Cby = scale * ev.y;
-    const Cbx_r = Cbx * cosT - Cby * sinT;
-    const Cby_r = Cbx * sinT + Cby * cosT;
-    const gx = Fx - Cbx_r;
-    const gy = Fy - Cby_r;
-
-    // Pen at (d_pen, 0) in body frame
-    const dPen = state.penFrac * def.maxExtent * scale;
-    const px = gx + dPen * cosT;
-    const py = gy + dPen * sinT;
-
-    return { gx, gy, px, py, R, scale, theta, cog };
+    return { gx, gy, px, py, R, r };
   }
 
-  // ---- Trail rendering ----
   function redrawTrail() {
     trailCtx.clearRect(0, 0, W, H);
     if (history.length < 2) return;
@@ -537,27 +379,11 @@
     const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
     gearCtx.lineWidth = 1.2;
     gearCtx.strokeStyle = accent;
+    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
 
-    if (s.cog.type === 'round') {
-      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
-    } else {
-      const tab = COG_TABLES[s.cog.type];
-      const cosT = Math.cos(s.theta), sinT = Math.sin(s.theta);
-      gearCtx.beginPath();
-      for (let i = 0; i <= tab.samples; i++) {
-        const xb = s.scale * tab.x[i], yb = s.scale * tab.y[i];
-        const x = s.gx + xb * cosT - yb * sinT;
-        const y = s.gy + xb * sinT + yb * cosT;
-        if (i === 0) gearCtx.moveTo(x, y); else gearCtx.lineTo(x, y);
-      }
-      gearCtx.closePath();
-      gearCtx.stroke();
-    }
-    // Body origin marker
     gearCtx.fillStyle = accent;
     gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
 
-    // Pen line + dot
     gearCtx.beginPath(); gearCtx.moveTo(s.gx, s.gy); gearCtx.lineTo(s.px, s.py); gearCtx.stroke();
     gearCtx.fillStyle = state.color;
     gearCtx.beginPath(); gearCtx.arc(s.px, s.py, 4.5, 0, Math.PI*2); gearCtx.fill();
@@ -666,59 +492,17 @@
 
   // ---- UI: Cogs ----
   const cogsEl = document.getElementById('cogs');
-  function cogIconSVG(cog) {
-    if (cog.type === 'round') {
-      const r = 18 * cog.ratio;
-      const cxIn = 38 - r;
-      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+  COGS.forEach((cog, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'cog-btn' + (i === state.cogIdx ? ' active' : '');
+    const r = 18 * cog.ratio;
+    const cxIn = 38 - r;
+    btn.innerHTML =
+      '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
         '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
         '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
         '<circle cx="' + (cxIn + r * 0.6) + '" cy="20" r="1.4" fill="currentColor"/>' +
       '</svg>';
-    }
-    if (cog.type === 'plus') {
-      // Sample 64 points from the plus body for a nice icon outline
-      const def = COG_DEFS.plus;
-      const cxIcon = 24, cyIcon = 20, scale = 8;
-      let path = '';
-      for (let i = 0; i <= 64; i++) {
-        const u = (i / 64) * 2 * Math.PI;
-        const p = def.eval(u);
-        const x = (cxIcon + scale * p.x).toFixed(2);
-        const y = (cyIcon + scale * p.y).toFixed(2);
-        path += (i === 0 ? 'M' : 'L') + x + ',' + y;
-      }
-      path += 'Z';
-      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
-        '<path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<circle cx="24" cy="20" r="1.4" fill="currentColor"/>' +
-      '</svg>';
-    }
-    if (cog.type === 'football') {
-      const def = COG_DEFS.football;
-      const cxIcon = 22, cyIcon = 20;
-      const scale = 8;
-      const a = (def._a * scale).toFixed(2);
-      const b = (def._b * scale).toFixed(2);
-      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
-        '<ellipse cx="' + cxIcon + '" cy="' + cyIcon + '" rx="' + a + '" ry="' + b + '" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<circle cx="26" cy="20" r="1.4" fill="currentColor"/>' +
-      '</svg>';
-    }
-    return '';
-  }
-  COGS.forEach((cog, i) => {
-    const btn = document.createElement('div');
-    btn.className = 'cog-btn' + (i === state.cogIdx ? ' active' : '');
-    btn.innerHTML = cogIconSVG(cog);
-    if (cog.type !== 'round') {
-      const lbl = document.createElement('div');
-      lbl.className = 'lbl';
-      lbl.textContent = cog.name;
-      btn.appendChild(lbl);
-    }
     btn.title = cog.name;
     btn.addEventListener('click', () => {
       state.cogIdx = i;
