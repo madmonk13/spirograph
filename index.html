@@ -83,12 +83,14 @@
   .chip.active { background: #222; color: #fff; border-color: #222; }
   body.dark .chip.active { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
 
-  .colors { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .colors { display: grid; grid-template-columns: repeat(9, 1fr); gap: 8px; }
   .color {
     aspect-ratio: 1; border-radius: 50%; cursor: pointer;
     border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
   }
+  .color[data-ink="#ffffff"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.28); }
+  body.dark .color[data-ink="#000000"] { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28); }
   .color.active { border-color: #222; transform: scale(1.08); }
   body.dark .color.active { border-color: #fff; }
 
@@ -298,36 +300,356 @@
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
   // ROYGBIV
-  const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
+  const COLORS = ['#000000','#ffffff','#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
 
-  // Round-cog catalog. ratio = r / R. holes generated per cog.
+  // Cog catalog. Round cogs use analytical hypotrochoid/epitrochoid math.
+  // Specialty pieces use the rolling-curve engine, sized small (matching the
+  // real toy) so they fit cleanly inside the ring.
   const COGS = [
-    { name: 'XS', ratio: 0.18, nHoles: 9  },
-    { name: 'S',  ratio: 0.27, nHoles: 12 },
-    { name: 'M',  ratio: 0.35, nHoles: 15 },
-    { name: '⅖', ratio: 0.40, nHoles: 17 },
-    { name: 'L',  ratio: 0.45, nHoles: 19 },
-    { name: '½', ratio: 0.50, nHoles: 22 },
-    { name: '⅔', ratio: 0.66, nHoles: 27 },
-    { name: '¾', ratio: 0.75, nHoles: 32 },
+    { type: 'round',    name: 'XS', ratio: 0.18, nHoles: 9  },
+    { type: 'round',    name: 'S',  ratio: 0.27, nHoles: 12 },
+    { type: 'round',    name: 'M',  ratio: 0.35, nHoles: 15 },
+    { type: 'round',    name: '⅖', ratio: 0.40, nHoles: 17 },
+    { type: 'round',    name: 'L',  ratio: 0.45, nHoles: 19 },
+    { type: 'round',    name: '½', ratio: 0.50, nHoles: 22 },
+    { type: 'round',    name: '⅔', ratio: 0.66, nHoles: 27 },
+    { type: 'round',    name: '¾', ratio: 0.75, nHoles: 32 },
+    { type: 'plus',      name: 'Plus',      scale: 0.26, fixedBodyFrac: 0.165, nHoles: 13 },
+    { type: 'triangle',  name: 'Triangle',  scale: 0.25, fixedBodyFrac: 0.175, nHoles: 9  },
+    { type: 'rectangle', name: 'Rectangle', scale: 0.20, fixedBodyFrac: 0.140, nHoles: 9  },
+    { type: 'football',  name: 'Football',  scale: 0.42, nHoles: 11 },
   ];
 
-  // Archimedean spiral, like the original Spirograph wheels: holes step out
-  // along a tightly-wound spiral from near-center toward the rim. Turn count
-  // grows with hole count so larger cogs wind more times.
-  function buildHoles(n) {
+  // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
+  const COG_DEFS = {
+    // Rolling-friendly plus: a shallow 4-lobed cross profile. The amplitude
+    // stays low enough to keep the support curve convex, which avoids the
+    // visible "rocking backward" artifact from overly concave shapes.
+    plus: {
+      _a: 0.05,
+      _phi: Math.PI / 4,
+      maxRho: 1.05,
+      rho: function(theta) { return 1 + this._a * Math.cos(4 * (theta - this._phi)); },
+      eval: function(u) {
+        const a = this._a;
+        const c = Math.cos(u),  s = Math.sin(u);
+        const q = 4 * (u - this._phi);
+        const c4 = Math.cos(q), s4 = Math.sin(q);
+        const rho  = 1 + a * c4;
+        const rhoP = -4 * a * s4;
+        return { x: rho*c, y: rho*s, dx: rhoP*c - rho*s, dy: rhoP*s + rho*c };
+      },
+    },
+    // Rounded triangle: 3-fold ρ(u) = 1 + a·cos(3u). 3-fold separation π/3
+    // gives cos(π/3)=0.5 in the worst-case fit formula, so it tolerates much
+    // larger amplitude / scale than the 4-fold plus did.
+    triangle: {
+      _a: 0.15,
+      maxRho: 1.15,
+      rho: function(theta) { return 1 + this._a * Math.cos(3 * theta); },
+      eval: function(u) {
+        const a = this._a;
+        const c = Math.cos(u),  s = Math.sin(u);
+        const c3 = Math.cos(3*u), s3 = Math.sin(3*u);
+        const rho  = 1 + a * c3;
+        const rhoP = -3 * a * s3;
+        return { x: rho*c, y: rho*s, dx: rhoP*c - rho*s, dy: rhoP*s + rho*c };
+      },
+    },
+    // Rounded rectangle: superellipse |x/a|^n + |y/b|^n = 1 in polar form.
+    // n=4 gives a "fat" rounded rectangle (between ellipse and rectangle).
+    rectangle: {
+      _a: 1.30, _b: 0.80, _n: 4,
+      maxRho: 1.30,
+      rho: function(theta) {
+        const a = this._a, b = this._b, n = this._n;
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const g = Math.pow(Math.abs(c)/a, n) + Math.pow(Math.abs(s)/b, n);
+        return Math.pow(g, -1/n);
+      },
+      eval: function(u) {
+        const a = this._a, b = this._b, n = this._n;
+        const c = Math.cos(u), s = Math.sin(u);
+        const aN = Math.pow(a, n), bN = Math.pow(b, n);
+        // n is even → c^n, s^n are non-negative; c^(n-1), s^(n-1) carry sign.
+        const g  = Math.pow(c, n)/aN + Math.pow(s, n)/bN;
+        const dg = n*Math.pow(c, n-1)*(-s)/aN + n*Math.pow(s, n-1)*c/bN;
+        const r  = Math.pow(g, -1/n);
+        const rp = (-1/n) * Math.pow(g, -1/n - 1) * dg;
+        return {
+          x: r*c, y: r*s,
+          dx: rp*c - r*s,
+          dy: rp*s + r*c,
+        };
+      },
+    },
+    football: {
+      _a: 1.40, _b: 0.70,
+      maxRho: 1.40,
+      rho: function(theta) {
+        const A = this._b * Math.cos(theta);
+        const B = this._a * Math.sin(theta);
+        return this._a * this._b / Math.sqrt(A*A + B*B);
+      },
+      eval: function(u) {
+        return {
+          x: this._a * Math.cos(u),
+          y: this._b * Math.sin(u),
+          dx: -this._a * Math.sin(u),
+          dy:  this._b * Math.cos(u),
+        };
+      },
+    },
+  };
+
+  // Precompute arc-length / tangent-angle tables for non-round cogs.
+  function buildCogTable(def, samples = 1024) {
+    const tab = {
+      u:     new Float32Array(samples + 1),
+      x:     new Float32Array(samples + 1),
+      y:     new Float32Array(samples + 1),
+      s:     new Float32Array(samples + 1),
+      alpha: new Float32Array(samples + 1),
+    };
+    let cum = 0, prevX = 0, prevY = 0;
+    let prevAlpha = null, alphaUnwrap = 0;
+    for (let i = 0; i <= samples; i++) {
+      const u = (i / samples) * 2 * Math.PI;
+      const p = def.eval(u);
+      if (i > 0) {
+        const ddx = p.x - prevX, ddy = p.y - prevY;
+        cum += Math.sqrt(ddx*ddx + ddy*ddy);
+      }
+      let alpha = Math.atan2(p.dy, p.dx);
+      if (prevAlpha !== null) {
+        const diff = alpha - prevAlpha;
+        if (diff >  Math.PI) alphaUnwrap -= 2 * Math.PI;
+        if (diff < -Math.PI) alphaUnwrap += 2 * Math.PI;
+      }
+      prevAlpha = alpha;
+      tab.u[i] = u;
+      tab.x[i] = p.x; tab.y[i] = p.y;
+      tab.s[i] = cum;
+      tab.alpha[i] = alpha + alphaUnwrap;
+      prevX = p.x; prevY = p.y;
+    }
+    tab.samples = samples;
+    tab.perimeter = cum;
+    tab.alpha0 = tab.alpha[0];
+    return tab;
+  }
+  const COG_TABLES = {
+    plus:      buildCogTable(COG_DEFS.plus),
+    triangle:  buildCogTable(COG_DEFS.triangle),
+    rectangle: buildCogTable(COG_DEFS.rectangle),
+    football:  buildCogTable(COG_DEFS.football),
+  };
+  function lookupByS(tab, sTarget) {
+    const N = tab.samples;
+    let lo = 0, hi = N;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (tab.s[mid] <= sTarget) lo = mid; else hi = mid;
+    }
+    const span = (tab.s[hi] - tab.s[lo]) || 1;
+    const f = (sTarget - tab.s[lo]) / span;
+    return {
+      x:     tab.x[lo]     * (1-f) + tab.x[hi]     * f,
+      y:     tab.y[lo]     * (1-f) + tab.y[hi]     * f,
+      alpha: tab.alpha[lo] * (1-f) + tab.alpha[hi] * f,
+    };
+  }
+
+  // Hole layouts aim to resemble the classic Spirograph plates more closely
+  // than the earlier generic spiral.
+  function distributeRing(holes, count, dist, startAng) {
+    for (let i = 0; i < count; i++) {
+      holes.push({ dist, ang: startAng + (i / count) * 2 * Math.PI });
+    }
+  }
+
+  function buildRoundHoles(n) {
     const holes = [];
-    const minR = 0.22, maxR = 0.94;
-    const turns = Math.max(1.0, 0.5 + n * 0.06);
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0.5 : i / (n - 1);
-      const dist = minR + (maxR - minR) * t;
-      const ang = t * turns * 2 * Math.PI;
-      holes.push({ dist, ang });
+    if (n <= 0) return holes;
+    holes.push({ dist: 0.14, ang: 0 });
+    if (n === 1) return holes;
+
+    let remaining = n - 1;
+    const inner = Math.min(6, remaining);
+    distributeRing(holes, inner, 0.30, Math.PI / 6);
+    remaining -= inner;
+
+    if (remaining > 0) {
+      const mid = Math.min(8, remaining);
+      distributeRing(holes, mid, 0.52, mid > 6 ? 0 : Math.PI / 8);
+      remaining -= mid;
+    }
+
+    if (remaining > 0) {
+      distributeRing(holes, remaining, 0.78, Math.PI / Math.max(remaining, 2));
     }
     return holes;
   }
-  COGS.forEach(c => { c.holes = buildHoles(c.nHoles); });
+
+  function buildTriangleHoles() {
+    const holes = [];
+    const armAngles = [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6];
+    const armDists = [0.26, 0.48, 0.72];
+    armAngles.forEach(ang => {
+      armDists.forEach(dist => holes.push({ dist, ang }));
+    });
+    return holes;
+  }
+
+  function buildRectangleHoles() {
+    const holes = [];
+    const rowA = [
+      { dist: 0.26, ang: -0.38 },
+      { dist: 0.42, ang: -0.24 },
+      { dist: 0.58, ang: -0.10 },
+      { dist: 0.74, ang:  0.03 },
+      { dist: 0.88, ang:  0.15 },
+    ];
+    const rowB = [
+      { dist: 0.24, ang: Math.PI - 0.18 },
+      { dist: 0.42, ang: Math.PI - 0.04 },
+      { dist: 0.60, ang: Math.PI + 0.10 },
+      { dist: 0.78, ang: Math.PI + 0.24 },
+    ];
+    return holes.concat(rowA, rowB);
+  }
+
+  function buildFootballHoles() {
+    const holes = [];
+    const slope = 0.24;
+    const dists = [0.24, 0.38, 0.52, 0.66, 0.80];
+    dists.forEach((dist, i) => holes.push({ dist, ang: -slope + i * 0.08 }));
+    holes.push({ dist: 0.18, ang: 0 });
+    dists.forEach((dist, i) => holes.push({ dist, ang: Math.PI + slope - i * 0.08 }));
+    return holes;
+  }
+  function buildPlusHoles() {
+    const holes = [{ dist: 0.16, ang: Math.PI / 4 }];
+    const armAngles = [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4];
+    const armDists = [0.34, 0.52, 0.70];
+    armAngles.forEach((baseAng) => {
+      armDists.forEach((dist) => {
+        holes.push({ dist, ang: baseAng });
+      });
+    });
+    return holes;
+  }
+  function rhoOf(cog, ang) {
+    return cog.type === 'round' ? 1 : COG_DEFS[cog.type].rho(ang);
+  }
+  COGS.forEach(c => {
+    if (c.type === 'round') c.holes = buildRoundHoles(c.nHoles);
+    else if (c.type === 'plus') c.holes = buildPlusHoles();
+    else if (c.type === 'triangle') c.holes = buildTriangleHoles();
+    else if (c.type === 'rectangle') c.holes = buildRectangleHoles();
+    else if (c.type === 'football') c.holes = buildFootballHoles();
+  });
+
+  function getNonRoundState(cog, fixed, t, R, RX, RY, scaleOverride) {
+    const tab = COG_TABLES[cog.type];
+    const scale = scaleOverride != null ? scaleOverride : cog.scale * R;
+    const sFix  = R * t;
+    // Sign convention: ring (internal) sCog=+sFix; circle (external) sCog=−sFix.
+    const sCog = (fixed === 'circle') ? -sFix : sFix;
+    const sCogUnit = sCog / scale;
+    const L = tab.perimeter;
+    const cyc = Math.floor(sCogUnit / L);
+    const sResid = sCogUnit - cyc * L;
+    const ev = lookupByS(tab, sResid);
+    const alphaCog = ev.alpha + cyc * 2 * Math.PI;
+
+    const alphaFix = Math.PI / 2 + t;
+    const Fx = RX + R * Math.cos(t);
+    const Fy = RY + R * Math.sin(t);
+    const theta = (fixed === 'circle')
+      ? alphaFix - alphaCog + Math.PI    // external
+      : alphaFix - alphaCog;             // internal
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+    // Cog body origin: T = F − Rot(θ)·C_body
+    const Cbx = scale * ev.x, Cby = scale * ev.y;
+    const gx = Fx - (Cbx * cosT - Cby * sinT);
+    const gy = Fy - (Cbx * sinT + Cby * cosT);
+
+    return { gx, gy, theta, scale };
+  }
+
+  function measureInsideReach(cog, scale, tSamples = 1024) {
+    const tab = COG_TABLES[cog.type];
+    const turns = 8;
+    let maxDist = 0;
+    for (let ti = 0; ti <= tSamples; ti++) {
+      const t = (ti / tSamples) * (2 * Math.PI * turns);
+      const pose = getNonRoundState(cog, 'ring', t, 1, 0, 0, scale);
+      const cosT = Math.cos(pose.theta), sinT = Math.sin(pose.theta);
+      for (let i = 0; i <= tab.samples; i += 4) {
+        const xb = pose.scale * tab.x[i];
+        const yb = pose.scale * tab.y[i];
+        const x = pose.gx + xb * cosT - yb * sinT;
+        const y = pose.gy + xb * sinT + yb * cosT;
+        const dist = Math.hypot(x, y);
+        if (dist > maxDist) maxDist = dist;
+      }
+    }
+    return maxDist;
+  }
+
+  COGS.forEach(cog => {
+    if (cog.type !== 'round') {
+      cog.insideReach = measureInsideReach(cog, cog.scale);
+    }
+  });
+
+  function resolvedCogScale(cog) {
+    return cog.type === 'round' ? cog.ratio : cog.scale;
+  }
+
+  function bodyScaleFor(cog, ringR) {
+    if (cog.type === 'round') return cog.ratio * ringR;
+    if (cog.fixedBodyFrac != null) return availableR() * cog.fixedBodyFrac;
+    return cog.scale * ringR;
+  }
+
+  const insideReachCache = new Map();
+  function measureInsideReachCached(cog, scale) {
+    const key = cog.type + ':' + scale.toFixed(5);
+    let val = insideReachCache.get(key);
+    if (val == null) {
+      val = measureInsideReach(cog, scale, 768);
+      insideReachCache.set(key, val);
+    }
+    return val;
+  }
+
+  const rollingRadiusCache = new Map();
+  function solveInsideRollingRadius(cog, ringR) {
+    const bodyScale = bodyScaleFor(cog, ringR);
+    const cacheKey = cog.type + ':' + ringR.toFixed(3) + ':' + bodyScale.toFixed(3);
+    let cached = rollingRadiusCache.get(cacheKey);
+    if (cached != null) return cached;
+
+    let lo = Math.max(bodyScale * 0.25, 1e-4);
+    let hi = ringR;
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      const outerReach = mid * measureInsideReachCached(cog, bodyScale / mid);
+      if (outerReach <= ringR) lo = mid;
+      else hi = mid;
+    }
+    rollingRadiusCache.set(cacheKey, lo);
+    return lo;
+  }
+
+  function rollingRadiusFor(cog, fixed, ringR) {
+    if (fixed !== 'ring' || cog.type === 'round') return ringR;
+    if (cog.fixedBodyFrac != null) return solveInsideRollingRadius(cog, ringR);
+    return ringR / cog.insideReach;
+  }
 
   // ---- State ----
   const state = {
@@ -374,9 +696,18 @@
   function getR() {
     const cog = COGS[state.cogIdx];
     const avail = availableR();
+    let cogReach;
+    if (cog.type === 'round') cogReach = cog.ratio;
+    else if (cog.fixedBodyFrac != null) cogReach = bodyScaleFor(cog, avail) * COG_DEFS[cog.type].maxRho;
+    else cogReach = resolvedCogScale(cog) * COG_DEFS[cog.type].maxRho;
     if (state.fixed === 'circle') {
-      return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
+      if (cog.type !== 'round' && cog.fixedBodyFrac != null) {
+        return Math.max(24, (avail - 2 * cogReach) * state.sizeFrac);
+      }
+      // Cog rolls outside fixed circle. Outermost reach ≈ R + 2·body_extent.
+      return (avail / (1 + 2 * cogReach)) * state.sizeFrac;
     }
+    // Cog rolls inside the ring; the ring itself sets the outer reach.
     return avail * state.sizeFrac;
   }
 
@@ -387,29 +718,53 @@
   // For epitrochoid:  θ_body = +k·t + π (k = (R+r)/r)
   function stateAt(t) {
     const cog = COGS[state.cogIdx];
-    const R = getR();
-    const r = R * cog.ratio;
-    const hole = cog.holes[state.holeIdx];
-    const hx = hole.dist * r * Math.cos(hole.ang);
-    const hy = hole.dist * r * Math.sin(hole.ang);
+    const ringR = getR();
+    const R = rollingRadiusFor(cog, state.fixed, ringR);
     const RX = ringCx(), RY = ringCy();
-    let gx, gy, px, py;
-    if (state.fixed === 'circle') {
-      gx = RX + (R + r) * Math.cos(t);
-      gy = RY + (R + r) * Math.sin(t);
-      const k = (R + r) / r;
-      const c = -Math.cos(k * t), s = -Math.sin(k * t);
-      px = gx + hx * c - hy * s;
-      py = gy + hx * s + hy * c;
-    } else {
-      gx = RX + (R - r) * Math.cos(t);
-      gy = RY + (R - r) * Math.sin(t);
-      const k = (R - r) / r;
-      const c = Math.cos(-k * t), s = Math.sin(-k * t);
-      px = gx + hx * c - hy * s;
-      py = gy + hx * s + hy * c;
+    const hole = cog.holes[state.holeIdx];
+
+    if (cog.type === 'round') {
+      const r = R * cog.ratio;
+      // Hole at body coords (hx, hy); for round, body radius = r so dist*r is the radial distance.
+      const hx = hole.dist * r * Math.cos(hole.ang);
+      const hy = hole.dist * r * Math.sin(hole.ang);
+      let gx, gy, px, py, theta;
+      if (state.fixed === 'circle') {
+        gx = RX + (R + r) * Math.cos(t);
+        gy = RY + (R + r) * Math.sin(t);
+        const k = (R + r) / r;
+        theta = k * t + Math.PI;
+        const c = -Math.cos(k * t), s = -Math.sin(k * t);
+        px = gx + hx * c - hy * s;
+        py = gy + hx * s + hy * c;
+      } else {
+        gx = RX + (R - r) * Math.cos(t);
+        gy = RY + (R - r) * Math.sin(t);
+        const k = (R - r) / r;
+        theta = -k * t;
+        const c = Math.cos(-k * t), s = Math.sin(-k * t);
+        px = gx + hx * c - hy * s;
+        py = gy + hx * s + hy * c;
+      }
+      return { gx, gy, px, py, R, r, theta, cog };
     }
-    return { gx, gy, px, py, R, r };
+
+    // Non-round cog rolling on a circle of radius R.
+    const def   = COG_DEFS[cog.type];
+    const scale = bodyScaleFor(cog, R);
+    const pose = getNonRoundState(cog, state.fixed, t, R, RX, RY, scale);
+    const gx = pose.gx, gy = pose.gy, theta = pose.theta;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+    // Pen at the selected hole. Body radius at hole.ang is ρ(ang)·scale, so
+    // hole position in body = dist·ρ(ang)·scale·(cos ang, sin ang).
+    const rho = def.rho(hole.ang);
+    const hbx = hole.dist * rho * scale * Math.cos(hole.ang);
+    const hby = hole.dist * rho * scale * Math.sin(hole.ang);
+    const px = gx + hbx * cosT - hby * sinT;
+    const py = gy + hbx * sinT + hby * cosT;
+
+    return { gx, gy, px, py, R: ringR, rollR: R, r: scale, scale, theta, cog };
   }
 
   function redrawTrail() {
@@ -464,10 +819,28 @@
     const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
     const fill = 'rgba(248,248,240,0.25)';
     gearCtx.lineWidth = 1.2;
-    gearCtx.fillStyle = fill;
-    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.fill();
-    gearCtx.strokeStyle = accent;
-    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
+
+    if (s.cog.type === 'round') {
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.fill();
+      gearCtx.strokeStyle = accent;
+      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
+    } else {
+      const tab = COG_TABLES[s.cog.type];
+      const cosT = Math.cos(s.theta), sinT = Math.sin(s.theta);
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath();
+      for (let i = 0; i <= tab.samples; i++) {
+        const xb = s.scale * tab.x[i], yb = s.scale * tab.y[i];
+        const x = s.gx + xb * cosT - yb * sinT;
+        const y = s.gy + xb * sinT + yb * cosT;
+        if (i === 0) gearCtx.moveTo(x, y); else gearCtx.lineTo(x, y);
+      }
+      gearCtx.closePath();
+      gearCtx.fill();
+      gearCtx.strokeStyle = accent;
+      gearCtx.stroke();
+    }
 
     gearCtx.fillStyle = accent;
     gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
@@ -611,6 +984,7 @@
     const el = document.createElement('div');
     el.className = 'color' + (c === state.color ? ' active' : '');
     el.style.background = c;
+    el.dataset.ink = c;
     el.addEventListener('click', () => {
       state.color = c;
       breakSegment();
@@ -624,17 +998,38 @@
   // ---- UI: Cogs ----
   const cogsEl = document.getElementById('cogs');
   function cogButtonSVG(cog, holeIdx, color) {
-    const r = 18 * cog.ratio;
-    const cxIn = 38 - r;
     const hole = cog.holes[holeIdx];
-    const hxRel = hole.dist * r * Math.cos(hole.ang);
-    const hyRel = hole.dist * r * Math.sin(hole.ang);
-    const dotX = (cxIn + hxRel).toFixed(2);
-    const dotY = (20 + hyRel).toFixed(2);
+    if (cog.type === 'round') {
+      const r = 18 * cog.ratio;
+      const cxIn = 38 - r;
+      const hxRel = hole.dist * r * Math.cos(hole.ang);
+      const hyRel = hole.dist * r * Math.sin(hole.ang);
+      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
+        '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+        '<circle cx="' + (cxIn + hxRel).toFixed(2) + '" cy="' + (20 + hyRel).toFixed(2) + '" r="1.6" fill="' + color + '"/>' +
+      '</svg>';
+    }
+    // Non-round: draw the body shape, sized to fit the icon viewport.
+    const def = COG_DEFS[cog.type];
+    const tab = COG_TABLES[cog.type];
+    // Icon scale: body fits inside the 18-unit reference circle.
+    const svgScale = 16 / def.maxRho;
+    let path = '';
+    const N = 96;
+    for (let i = 0; i <= N; i++) {
+      const u = (i / N) * 2 * Math.PI;
+      const p = def.eval(u);
+      path += (i === 0 ? 'M' : 'L') + (20 + svgScale * p.x).toFixed(2) + ',' + (20 + svgScale * p.y).toFixed(2);
+    }
+    path += 'Z';
+    const rho = def.rho(hole.ang);
+    const hxRel = svgScale * hole.dist * rho * Math.cos(hole.ang);
+    const hyRel = svgScale * hole.dist * rho * Math.sin(hole.ang);
     return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-      '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
-      '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
-      '<circle class="cog-hole" cx="' + dotX + '" cy="' + dotY + '" r="1.6" fill="' + color + '"/>' +
+      '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25"/>' +
+      '<path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+      '<circle cx="' + (20 + hxRel).toFixed(2) + '" cy="' + (20 + hyRel).toFixed(2) + '" r="1.4" fill="' + color + '"/>' +
     '</svg>';
   }
   function previewHoleIdx(i) {
@@ -813,24 +1208,42 @@
   function buildHoleModalSVG() {
     const cog = COGS[state.cogIdx];
     holeTitle.textContent = 'Cog ' + cog.name + ' · choose a pen hole';
-    // viewBox -1.1..1.1 so unit-cog coordinates map directly
-    let svg = '<svg viewBox="-1.1 -1.1 2.2 2.2" xmlns="http://www.w3.org/2000/svg">';
+    // Sized so the body's max extent fits inside the viewBox.
+    const maxRho = cog.type === 'round' ? 1 : COG_DEFS[cog.type].maxRho;
+    const half = (maxRho + 0.10).toFixed(2);
+    const sz = (parseFloat(half) * 2).toFixed(2);
+    let svg = '<svg viewBox="-' + half + ' -' + half + ' ' + sz + ' ' + sz + '" xmlns="http://www.w3.org/2000/svg">';
     // Cog body
-    svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
+    if (cog.type === 'round') {
+      svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
+    } else {
+      const def = COG_DEFS[cog.type];
+      let path = '';
+      const N = 240;
+      for (let i = 0; i <= N; i++) {
+        const u = (i / N) * 2 * Math.PI;
+        const p = def.eval(u);
+        path += (i === 0 ? 'M' : 'L') + p.x.toFixed(4) + ',' + p.y.toFixed(4);
+      }
+      path += 'Z';
+      svg += '<path d="' + path + '" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="' + (0.012 * maxRho).toFixed(4) + '"/>';
+    }
     // Center pivot
-    svg += '<circle cx="0" cy="0" r="0.025" fill="rgba(255,255,255,0.7)"/>';
+    svg += '<circle cx="0" cy="0" r="' + (0.025 * maxRho).toFixed(4) + '" fill="rgba(255,255,255,0.7)"/>';
     // Holes
+    const visR = 0.038 * maxRho;
+    const hitR = 0.075 * maxRho;
     cog.holes.forEach((h, i) => {
-      const hx = (h.dist * Math.cos(h.ang)).toFixed(4);
-      const hy = (h.dist * Math.sin(h.ang)).toFixed(4);
+      const rho = rhoOf(cog, h.ang);
+      const hx = (h.dist * rho * Math.cos(h.ang)).toFixed(4);
+      const hy = (h.dist * rho * Math.sin(h.ang)).toFixed(4);
       const isActive = i === state.holeIdx;
       const fill = isActive ? state.color : 'rgba(0,0,0,0.92)';
       const stroke = isActive ? state.color : 'rgba(255,255,255,0.7)';
-      const sw = isActive ? '0.018' : '0.012';
+      const sw = ((isActive ? 0.018 : 0.012) * maxRho).toFixed(4);
       svg += '<g data-hole="' + i + '">';
-      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="0.038" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
-      // Larger transparent hit target
-      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="0.075" fill="rgba(0,0,0,0)" style="cursor:pointer"/>';
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + visR.toFixed(4) + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + hitR.toFixed(4) + '" fill="rgba(0,0,0,0)" style="cursor:pointer"/>';
       svg += '</g>';
     });
     svg += '</svg>';
