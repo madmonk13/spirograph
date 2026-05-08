@@ -74,10 +74,22 @@
   body.dark .section .note { color: #999; }
 
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  #shape-btns {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
   .chip {
     padding: 9px 14px; border-radius: 22px; border: 1px solid #ddd;
     background: #fff; color: #333; cursor: pointer; font-size: 13px;
     transition: all 0.15s; user-select: none;
+    display: flex; align-items: center; gap: 5px;
+  }
+  #shape-btns .chip {
+    width: 46px; height: 46px; padding: 0; border-radius: 14px;
+    justify-content: center; flex: 0 0 auto;
+  }
+  #shape-btns .chip svg {
+    width: 22px; height: 22px;
   }
   body.dark .chip { background: #232323; color: #eee; border-color: #3a3a3a; }
   .chip.active { background: #222; color: #fff; border-color: #222; }
@@ -94,17 +106,6 @@
   .color.active { border-color: #222; transform: scale(1.08); }
   body.dark .color.active { border-color: #fff; }
 
-  .cogs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .cog-btn {
-    aspect-ratio: 1; border: 1px solid #ddd; border-radius: 10px;
-    background: #fff; cursor: pointer; padding: 6px;
-    color: #555; transition: border-color 0.15s, background 0.15s;
-  }
-  body.dark .cog-btn { background: #232323; border-color: #3a3a3a; color: #ccc; }
-  .cog-btn.active { border-color: #222; border-width: 2px; padding: 5px; }
-  body.dark .cog-btn.active { border-color: #fff; }
-  .cog-btn svg { width: 100%; height: 100%; display: block; }
-
   .slider-wrap { display: flex; align-items: center; gap: 12px; }
   .slider-wrap input[type=range] { flex: 1; min-width: 0; }
   .slider-wrap .val {
@@ -115,13 +116,22 @@
 
   input[type=range] {
     -webkit-appearance: none; appearance: none;
-    height: 4px; background: #e0e0e0; border-radius: 2px; outline: none;
+    height: 22px; background: transparent; outline: none;
+    display: block;
   }
-  body.dark input[type=range] { background: #3a3a3a; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px; background: #e0e0e0; border-radius: 2px;
+  }
+  body.dark input[type=range]::-webkit-slider-runnable-track { background: #3a3a3a; }
+  input[type=range]::-moz-range-track {
+    height: 4px; background: #e0e0e0; border-radius: 2px; border: none;
+  }
+  body.dark input[type=range]::-moz-range-track { background: #3a3a3a; }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 22px; height: 22px; border-radius: 50%; background: #222;
     cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    margin-top: -9px; /* center thumb on 4px track: -(22-4)/2 */
   }
   input[type=range]::-moz-range-thumb {
     width: 22px; height: 22px; border-radius: 50%; background: #222;
@@ -139,6 +149,11 @@
   .btn.primary { background: #222; color: #fff; border-color: #222; }
   body.dark .btn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
   .btn:active { transform: scale(0.98); }
+
+  /* Hole row */
+  .hole-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .hole-row .note { margin: 0; }
+  .hole-row .btn { flex: none; padding: 7px 13px; font-size: 13px; }
 
   /* Bottom-right floating controls */
   .float-controls {
@@ -228,9 +243,16 @@
     <div class="drawer-title">Spirograph</div>
 
     <div class="section">
-      <h3>Rolling Cog &amp; Pen Hole</h3>
-      <div class="cogs" id="cogs"></div>
-      <p class="note">Tap a cog to choose a pen hole.</p>
+      <h3>Cog</h3>
+      <div class="row" id="shape-btns"></div>
+      <div class="slider-wrap" style="margin-top:14px">
+        <input type="range" id="cog-size" min="0" max="80" step="1" value="40">
+        <span class="val" id="cog-size-val">50%</span>
+      </div>
+      <div class="hole-row">
+        <span class="note" id="hole-label">Hole 4</span>
+        <button class="btn" id="pick-hole-btn">Pick hole</button>
+      </div>
     </div>
 
     <div class="section">
@@ -249,8 +271,8 @@
     <div class="section">
       <h3>Circumference</h3>
       <div class="slider-wrap">
-        <input type="range" id="size" min="20" max="100" value="70">
-        <span class="val" id="size-val">70%</span>
+        <input type="range" id="size" min="20" max="100" value="75">
+        <span class="val" id="size-val">75%</span>
       </div>
     </div>
 
@@ -300,52 +322,74 @@
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
   // ROYGBIV
-  const COLORS = ['#000000','#ffffff','#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0'];
+  const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0','#000000','#ffffff'];
 
-  // Cog catalog. Round cogs use analytical hypotrochoid/epitrochoid math.
-  // Specialty pieces use the rolling-curve engine, sized small (matching the
-  // real toy) so they fit cleanly inside the ring.
+  const ROUND_MIN_PERCENT = 10;
+  const ROUND_MAX_PERCENT = 90;
+  const ROUND_STEP_COUNT = ROUND_MAX_PERCENT - ROUND_MIN_PERCENT + 1;
+
+  // Specialty shapes; round cogs are generated dynamically for any whole
+  // number percentage between 10% and 90%.
   const COGS = [
-    { type: 'round',    name: 'XS', ratio: 0.18, nHoles: 9  },
-    { type: 'round',    name: 'S',  ratio: 0.27, nHoles: 12 },
-    { type: 'round',    name: 'M',  ratio: 0.35, nHoles: 15 },
-    { type: 'round',    name: '⅖', ratio: 0.40, nHoles: 17 },
-    { type: 'round',    name: 'L',  ratio: 0.45, nHoles: 19 },
-    { type: 'round',    name: '½', ratio: 0.50, nHoles: 22 },
-    { type: 'round',    name: '⅔', ratio: 0.66, nHoles: 27 },
-    { type: 'round',    name: '¾', ratio: 0.75, nHoles: 32 },
-    { type: 'plus',      name: 'Plus',      scale: 0.26, fixedBodyFrac: 0.165, nHoles: 13 },
+    { type: 'plus',      name: 'Square',    scale: 0.22, fixedBodyFrac: 0.165, nHoles: 12 },
     { type: 'triangle',  name: 'Triangle',  scale: 0.25, fixedBodyFrac: 0.175, nHoles: 9  },
-    { type: 'rectangle', name: 'Rectangle', scale: 0.20, fixedBodyFrac: 0.140, nHoles: 9  },
-    { type: 'football',  name: 'Football',  scale: 0.42, nHoles: 11 },
+    { type: 'rectangle', name: 'Oval',      scale: 0.17, fixedBodyFrac: 0.140, nHoles: 11 },
+    { type: 'hexagon',   name: 'Hexagon',   scale: 0.26, nHoles: 13 },
+    { type: 'pentagon',  name: 'Pentagon',  scale: 0.24, nHoles: 15 },
   ];
 
   // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
   const COG_DEFS = {
-    // Rolling-friendly plus: a shallow 4-lobed cross profile. The amplitude
-    // stays low enough to keep the support curve convex, which avoids the
-    // visible "rocking backward" artifact from overly concave shapes.
-    plus: {
-      _a: 0.05,
-      _phi: Math.PI / 4,
-      maxRho: 1.05,
-      rho: function(theta) { return 1 + this._a * Math.cos(4 * (theta - this._phi)); },
-      eval: function(u) {
-        const a = this._a;
-        const c = Math.cos(u),  s = Math.sin(u);
-        const q = 4 * (u - this._phi);
-        const c4 = Math.cos(q), s4 = Math.sin(q);
-        const rho  = 1 + a * c4;
-        const rhoP = -4 * a * s4;
-        return { x: rho*c, y: rho*s, dx: rhoP*c - rho*s, dy: rhoP*s + rho*c };
-      },
-    },
-    // Rounded triangle: 3-fold ρ(u) = 1 + a·cos(3u). 3-fold separation π/3
-    // gives cos(π/3)=0.5 in the worst-case fit formula, so it tolerates much
-    // larger amplitude / scale than the 4-fold plus did.
+    plus: (function() {
+      // Smooth convex 4-fold support curve rotated so the "corners" land on
+      // the diagonals, matching the square gear while eliminating corner-tip
+      // rocking in the rolling solver.
+      const a = 0.05;
+      const phi0 = Math.PI / 4;
+      function h(theta) {
+        return 1 + a * Math.cos(4 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -4 * a * Math.sin(4 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -16 * a * Math.cos(4 * (theta - phi0));
+      }
+      let maxRho = 0;
+      for (let i = 0; i < 1440; i++) {
+        const theta = (i / 1440) * 2 * Math.PI;
+        const hv = h(theta), h1 = hp(theta);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const x = hv * c - h1 * s;
+        const y = hv * s + h1 * c;
+        maxRho = Math.max(maxRho, Math.hypot(x, y));
+      }
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
     triangle: {
-      _a: 0.15,
-      maxRho: 1.15,
+      // 3-fold, same amplitude as square so rolling stays smooth
+      _a: 0.05,
+      maxRho: 1.05,
       rho: function(theta) { return 1 + this._a * Math.cos(3 * theta); },
       eval: function(u) {
         const a = this._a;
@@ -356,54 +400,131 @@
         return { x: rho*c, y: rho*s, dx: rhoP*c - rho*s, dy: rhoP*s + rho*c };
       },
     },
-    // Rounded rectangle: superellipse |x/a|^n + |y/b|^n = 1 in polar form.
-    // n=4 gives a "fat" rounded rectangle (between ellipse and rectangle).
-    rectangle: {
-      _a: 1.30, _b: 0.80, _n: 4,
-      maxRho: 1.30,
-      rho: function(theta) {
-        const a = this._a, b = this._b, n = this._n;
+    rectangle: (function() {
+      // Smooth convex rectangular support curve. A stronger 2-fold term sets
+      // the aspect ratio, while a small negative 4-fold term flattens the
+      // long sides so it reads as a rounded rectangle rather than an oval.
+      const a2 = 0.26;
+      const a4 = -0.015;
+      function h(theta) {
+        return 1 + a2 * Math.cos(2 * theta) + a4 * Math.cos(4 * theta);
+      }
+      function hp(theta) {
+        return -2 * a2 * Math.sin(2 * theta) - 4 * a4 * Math.sin(4 * theta);
+      }
+      function hpp(theta) {
+        return -4 * a2 * Math.cos(2 * theta) - 16 * a4 * Math.cos(4 * theta);
+      }
+      let maxRho = 0;
+      for (let i = 0; i < 1440; i++) {
+        const theta = (i / 1440) * 2 * Math.PI;
+        const hv = h(theta), h1 = hp(theta);
         const c = Math.cos(theta), s = Math.sin(theta);
-        const g = Math.pow(Math.abs(c)/a, n) + Math.pow(Math.abs(s)/b, n);
-        return Math.pow(g, -1/n);
-      },
-      eval: function(u) {
-        const a = this._a, b = this._b, n = this._n;
-        const c = Math.cos(u), s = Math.sin(u);
-        const aN = Math.pow(a, n), bN = Math.pow(b, n);
-        // n is even → c^n, s^n are non-negative; c^(n-1), s^(n-1) carry sign.
-        const g  = Math.pow(c, n)/aN + Math.pow(s, n)/bN;
-        const dg = n*Math.pow(c, n-1)*(-s)/aN + n*Math.pow(s, n-1)*c/bN;
-        const r  = Math.pow(g, -1/n);
-        const rp = (-1/n) * Math.pow(g, -1/n - 1) * dg;
-        return {
-          x: r*c, y: r*s,
-          dx: rp*c - r*s,
-          dy: rp*s + r*c,
-        };
-      },
-    },
-    football: {
-      _a: 1.40, _b: 0.70,
-      maxRho: 1.40,
-      rho: function(theta) {
-        const A = this._b * Math.cos(theta);
-        const B = this._a * Math.sin(theta);
-        return this._a * this._b / Math.sqrt(A*A + B*B);
-      },
-      eval: function(u) {
-        return {
-          x: this._a * Math.cos(u),
-          y: this._b * Math.sin(u),
-          dx: -this._a * Math.sin(u),
-          dy:  this._b * Math.cos(u),
-        };
-      },
-    },
+        const x = hv * c - h1 * s;
+        const y = hv * s + h1 * c;
+        maxRho = Math.max(maxRho, Math.hypot(x, y));
+      }
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+    hexagon: (function() {
+      // Smooth convex 6-fold support curve. This keeps the hexagonal read
+      // while avoiding the corner-tipping behavior from hard-sided polygons.
+      const a = 0.022;
+      const phi0 = Math.PI / 2;
+      function h(theta) {
+        return 1 + a * Math.cos(6 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -6 * a * Math.sin(6 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -36 * a * Math.cos(6 * (theta - phi0));
+      }
+      const maxRho = h(phi0);
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+    pentagon: (function() {
+      // Smooth convex 5-fold support curve. This preserves a pentagon-like
+      // silhouette while removing the flat-side/corner transitions that make
+      // the cog visibly tip and rock in the rolling solver.
+      const a = 0.032;
+      const phi0 = Math.PI / 2;
+      function h(theta) {
+        return 1 + a * Math.cos(5 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -5 * a * Math.sin(5 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -25 * a * Math.cos(5 * (theta - phi0));
+      }
+      const maxRho = h(phi0);
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
   };
 
   // Precompute arc-length / tangent-angle tables for non-round cogs.
-  function buildCogTable(def, samples = 1024) {
+  function buildCogTable(def, samples = 2048) {
     const tab = {
       u:     new Float32Array(samples + 1),
       x:     new Float32Array(samples + 1),
@@ -436,13 +557,15 @@
     tab.samples = samples;
     tab.perimeter = cum;
     tab.alpha0 = tab.alpha[0];
+    tab.evalByS = def.evalByS || null;
     return tab;
   }
   const COG_TABLES = {
     plus:      buildCogTable(COG_DEFS.plus),
     triangle:  buildCogTable(COG_DEFS.triangle),
     rectangle: buildCogTable(COG_DEFS.rectangle),
-    football:  buildCogTable(COG_DEFS.football),
+    hexagon:   buildCogTable(COG_DEFS.hexagon),
+    pentagon:  buildCogTable(COG_DEFS.pentagon, 4096),
   };
   function lookupByS(tab, sTarget) {
     const N = tab.samples;
@@ -460,8 +583,6 @@
     };
   }
 
-  // Hole layouts aim to resemble the classic Spirograph plates more closely
-  // than the earlier generic spiral.
   function distributeRing(holes, count, dist, startAng) {
     for (let i = 0; i < count; i++) {
       holes.push({ dist, ang: startAng + (i / count) * 2 * Math.PI });
@@ -473,72 +594,103 @@
     if (n <= 0) return holes;
     holes.push({ dist: 0.14, ang: 0 });
     if (n === 1) return holes;
-
-    let remaining = n - 1;
-    const inner = Math.min(6, remaining);
-    distributeRing(holes, inner, 0.30, Math.PI / 6);
-    remaining -= inner;
-
-    if (remaining > 0) {
-      const mid = Math.min(8, remaining);
-      distributeRing(holes, mid, 0.52, mid > 6 ? 0 : Math.PI / 8);
-      remaining -= mid;
-    }
-
-    if (remaining > 0) {
-      distributeRing(holes, remaining, 0.78, Math.PI / Math.max(remaining, 2));
+    // For round cogs, angle alone only rotates the same resulting curve, so
+    // maximize variation by giving every available hole a unique radius.
+    // Keep the visual feel of the classic picker by laying those unique radii
+    // out along a gentle spiral instead of stacked concentric rings.
+    const remaining = n - 1;
+    const minR = 0.24;
+    const maxR = 0.86;
+    const turns = 1.25 + remaining * 0.11;
+    for (let i = 0; i < remaining; i++) {
+      const t = remaining === 1 ? 1 : i / (remaining - 1);
+      const dist = minR + (maxR - minR) * t;
+      const ang = Math.PI / 5 + t * turns * 2 * Math.PI;
+      holes.push({ dist, ang });
     }
     return holes;
   }
 
   function buildTriangleHoles() {
-    const holes = [];
-    const armAngles = [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6];
-    const armDists = [0.26, 0.48, 0.72];
-    armAngles.forEach(ang => {
-      armDists.forEach(dist => holes.push({ dist, ang }));
-    });
-    return holes;
+    return buildRadialVertexRuns(
+      [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6],
+      [
+        [0.16, 0.38, 0.60],
+        [0.23, 0.47, 0.73],
+        [0.30, 0.56, 0.84],
+      ]
+    );
   }
 
   function buildRectangleHoles() {
-    const holes = [];
-    const rowA = [
-      { dist: 0.26, ang: -0.38 },
-      { dist: 0.42, ang: -0.24 },
-      { dist: 0.58, ang: -0.10 },
-      { dist: 0.74, ang:  0.03 },
-      { dist: 0.88, ang:  0.15 },
-    ];
-    const rowB = [
-      { dist: 0.24, ang: Math.PI - 0.18 },
-      { dist: 0.42, ang: Math.PI - 0.04 },
-      { dist: 0.60, ang: Math.PI + 0.10 },
-      { dist: 0.78, ang: Math.PI + 0.24 },
-    ];
-    return holes.concat(rowA, rowB);
+    return buildRadialVertexRuns(
+      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
+      [
+        [0.18, 0.44],
+        [0.24, 0.54],
+        [0.31, 0.66],
+        [0.39, 0.80],
+      ],
+      [{ dist: 0.12, ang: 0 }, { dist: 0.70, ang: 0 }, { dist: 0.86, ang: Math.PI }]
+    );
   }
 
-  function buildFootballHoles() {
-    const holes = [];
-    const slope = 0.24;
-    const dists = [0.24, 0.38, 0.52, 0.66, 0.80];
-    dists.forEach((dist, i) => holes.push({ dist, ang: -slope + i * 0.08 }));
-    holes.push({ dist: 0.18, ang: 0 });
-    dists.forEach((dist, i) => holes.push({ dist, ang: Math.PI + slope - i * 0.08 }));
-    return holes;
+  function buildHexagonHoles() {
+    return buildRadialVertexRuns([
+      Math.PI / 2,
+      Math.PI / 2 + Math.PI / 3,
+      Math.PI / 2 + 2 * Math.PI / 3,
+      Math.PI / 2 + Math.PI,
+      Math.PI / 2 + 4 * Math.PI / 3,
+      Math.PI / 2 + 5 * Math.PI / 3,
+    ], [
+      [0.14, 0.38],
+      [0.18, 0.44],
+      [0.22, 0.50],
+      [0.26, 0.58],
+      [0.30, 0.66],
+      [0.34, 0.76],
+    ], [{ dist: 0.10, ang: 0 }]);
   }
   function buildPlusHoles() {
-    const holes = [{ dist: 0.16, ang: Math.PI / 4 }];
-    const armAngles = [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4];
-    const armDists = [0.34, 0.52, 0.70];
-    armAngles.forEach((baseAng) => {
-      armDists.forEach((dist) => {
+    return buildRadialVertexRuns(
+      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
+      [
+        [0.16, 0.34, 0.56],
+        [0.22, 0.42, 0.64],
+        [0.28, 0.50, 0.72],
+        [0.36, 0.60, 0.84],
+      ]
+    );
+  }
+  function buildPentagonHoles() {
+    return buildRadialVertexRuns([
+      Math.PI / 2,
+      Math.PI / 2 + 2 * Math.PI / 5,
+      Math.PI / 2 + 4 * Math.PI / 5,
+      Math.PI / 2 + 6 * Math.PI / 5,
+      Math.PI / 2 + 8 * Math.PI / 5,
+    ], [
+      [0.15, 0.34, 0.55],
+      [0.19, 0.40, 0.62],
+      [0.24, 0.46, 0.69],
+      [0.29, 0.52, 0.76],
+      [0.31, 0.58, 0.84],
+    ]);
+  }
+
+  function buildRadialVertexRuns(vertexAngles, perVertexDists, extras) {
+    const holes = [];
+    vertexAngles.forEach((baseAng, i) => {
+      const dists = perVertexDists[i] || [];
+      dists.forEach((dist) => {
         holes.push({ dist, ang: baseAng });
       });
     });
+    if (extras && extras.length) holes.push(...extras);
     return holes;
   }
+
   function rhoOf(cog, ang) {
     return cog.type === 'round' ? 1 : COG_DEFS[cog.type].rho(ang);
   }
@@ -547,31 +699,89 @@
     else if (c.type === 'plus') c.holes = buildPlusHoles();
     else if (c.type === 'triangle') c.holes = buildTriangleHoles();
     else if (c.type === 'rectangle') c.holes = buildRectangleHoles();
-    else if (c.type === 'football') c.holes = buildFootballHoles();
+    else if (c.type === 'hexagon') c.holes = buildHexagonHoles();
+    else if (c.type === 'pentagon') c.holes = buildPentagonHoles();
   });
+
+  // ---- Shape / size constants ----
+  const SHAPE_TYPES  = ['round', 'rectangle', 'triangle', 'plus', 'pentagon', 'hexagon'];
+  const SHAPE_LABELS = { round: 'Circle', rectangle: 'Oval', triangle: 'Triangle', plus: 'Square', pentagon: 'Pentagon', hexagon: 'Hexagon' };
+
+  // Anchor scales at 10%, 20%, ..., 90%. Intermediate whole-number
+  // percentages are interpolated from these anchors.
+  const NON_ROUND_SCALE_ANCHORS = {
+    plus:      [0.08, 0.11, 0.14, 0.18, 0.22, 0.26, 0.31, 0.37, 0.43],
+    triangle:  [0.10, 0.13, 0.17, 0.21, 0.26, 0.31, 0.37, 0.43, 0.50],
+    rectangle: [0.06, 0.08, 0.11, 0.14, 0.17, 0.21, 0.25, 0.30, 0.37],
+    hexagon:   [0.08, 0.11, 0.14, 0.18, 0.22, 0.27, 0.32, 0.38, 0.44],
+    pentagon:  [0.09, 0.12, 0.16, 0.20, 0.24, 0.29, 0.35, 0.41, 0.48],
+  };
+
+  function sizePercentFromStep(step) {
+    return ROUND_MIN_PERCENT + step;
+  }
+
+  function roundHoleCountForPercent(percent) {
+    return Math.round(6 + ((percent - ROUND_MIN_PERCENT) / (ROUND_MAX_PERCENT - ROUND_MIN_PERCENT)) * (34 - 6));
+  }
+
+  const ROUND_COG_CACHE = new Map();
+  function buildRoundCog(step) {
+    const percent = sizePercentFromStep(step);
+    let cog = ROUND_COG_CACHE.get(percent);
+    if (cog) return cog;
+    cog = {
+      type: 'round',
+      name: percent + '%',
+      ratio: percent / 100,
+      nHoles: roundHoleCountForPercent(percent),
+    };
+    cog.holes = buildRoundHoles(cog.nHoles);
+    ROUND_COG_CACHE.set(percent, cog);
+    return cog;
+  }
+
+  function interpolatedNonRoundScale(type, step) {
+    const anchors = NON_ROUND_SCALE_ANCHORS[type];
+    const pos = step / 10;
+    const lo = Math.floor(pos);
+    const hi = Math.min(anchors.length - 1, Math.ceil(pos));
+    if (lo === hi) return anchors[lo];
+    const t = pos - lo;
+    return anchors[lo] * (1 - t) + anchors[hi] * t;
+  }
+
+  // ---- Active-cog helper ----
+  function getActiveCog() {
+    if (state.shapeType === 'round') return buildRoundCog(state.sizeStep);
+    return COGS.find(c => c.type === state.shapeType);
+  }
 
   function getNonRoundState(cog, fixed, t, R, RX, RY, scaleOverride) {
     const tab = COG_TABLES[cog.type];
     const scale = scaleOverride != null ? scaleOverride : cog.scale * R;
     const sFix  = R * t;
-    // Sign convention: ring (internal) sCog=+sFix; circle (external) sCog=−sFix.
     const sCog = (fixed === 'circle') ? -sFix : sFix;
     const sCogUnit = sCog / scale;
     const L = tab.perimeter;
     const cyc = Math.floor(sCogUnit / L);
     const sResid = sCogUnit - cyc * L;
-    const ev = lookupByS(tab, sResid);
+    const evRaw = tab.evalByS ? tab.evalByS(sResid) : lookupByS(tab, sResid);
+    const ev = {
+      x: evRaw.x,
+      y: evRaw.y,
+      alpha: evRaw.alpha,
+    };
     const alphaCog = ev.alpha + cyc * 2 * Math.PI;
 
     const alphaFix = Math.PI / 2 + t;
     const Fx = RX + R * Math.cos(t);
     const Fy = RY + R * Math.sin(t);
     const theta = (fixed === 'circle')
-      ? alphaFix - alphaCog + Math.PI    // external
-      : alphaFix - alphaCog;             // internal
+      ? alphaFix - alphaCog + Math.PI
+      : alphaFix - alphaCog;
     const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
-    // Cog body origin: T = F − Rot(θ)·C_body
     const Cbx = scale * ev.x, Cby = scale * ev.y;
     const gx = Fx - (Cbx * cosT - Cby * sinT);
     const gy = Fy - (Cbx * sinT + Cby * cosT);
@@ -605,14 +815,9 @@
     }
   });
 
-  function resolvedCogScale(cog) {
-    return cog.type === 'round' ? cog.ratio : cog.scale;
-  }
-
   function bodyScaleFor(cog, ringR) {
     if (cog.type === 'round') return cog.ratio * ringR;
-    if (cog.fixedBodyFrac != null) return availableR() * cog.fixedBodyFrac;
-    return cog.scale * ringR;
+    return interpolatedNonRoundScale(cog.type, state.sizeStep) * ringR;
   }
 
   const insideReachCache = new Map();
@@ -638,7 +843,7 @@
     for (let i = 0; i < 20; i++) {
       const mid = (lo + hi) / 2;
       const outerReach = mid * measureInsideReachCached(cog, bodyScale / mid);
-      if (outerReach <= ringR) lo = mid;
+      if (outerReach <= ringR * 0.99) lo = mid;  // 1% margin keeps cog snug while absorbing sampling gaps
       else hi = mid;
     }
     rollingRadiusCache.set(cacheKey, lo);
@@ -646,24 +851,26 @@
   }
 
   function rollingRadiusFor(cog, fixed, ringR) {
-    if (fixed !== 'ring' || cog.type === 'round') return ringR;
-    if (cog.fixedBodyFrac != null) return solveInsideRollingRadius(cog, ringR);
-    return ringR / cog.insideReach;
+    if (fixed === 'ring' && cog.type !== 'round') {
+      return solveInsideRollingRadius(cog, ringR);
+    }
+    return ringR;
   }
 
   // ---- State ----
   const state = {
-    fixed: 'ring',         // 'ring' (draw inside) or 'circle' (draw outside)
-    cogIdx: 2,
-    holeIdx: 3,            // which hole on the cog
-    sizeFrac: 0.70,
+    fixed: 'ring',
+    shapeType: 'round',
+    sizeStep: 35,          // 0–80 → 10%–90%; default 45%
+    holeIdx: 3,
+    sizeFrac: 0.75,
     color: COLORS[4],
     bg: 'black',
     speed: 6,
-    paused: true,          // default: manual mode
-    locked: true,          // ring is locked by default
-    ringX: 0, ringY: 0,    // ring center offset from canvas center
-    t: 0,                  // angle parameter around fixed circle (CCW)
+    paused: true,
+    locked: true,
+    ringX: 0, ringY: 0,
+    t: 0,
   };
   document.body.classList.add('dark');
 
@@ -689,35 +896,24 @@
   }
 
   function availableR() {
-    // Fixed by canvas size — moving the ring doesn't resize it.
     return Math.min(W, H) / 2 - 24;
   }
 
   function getR() {
-    const cog = COGS[state.cogIdx];
+    const cog = getActiveCog();
     const avail = availableR();
-    let cogReach;
-    if (cog.type === 'round') cogReach = cog.ratio;
-    else if (cog.fixedBodyFrac != null) cogReach = bodyScaleFor(cog, avail) * COG_DEFS[cog.type].maxRho;
-    else cogReach = resolvedCogScale(cog) * COG_DEFS[cog.type].maxRho;
-    if (state.fixed === 'circle') {
-      if (cog.type !== 'round' && cog.fixedBodyFrac != null) {
-        return Math.max(24, (avail - 2 * cogReach) * state.sizeFrac);
-      }
-      // Cog rolls outside fixed circle. Outermost reach ≈ R + 2·body_extent.
-      return (avail / (1 + 2 * cogReach)) * state.sizeFrac;
+    if (state.fixed !== 'circle') return avail * state.sizeFrac;
+    if (cog.type === 'round') {
+      return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
     }
-    // Cog rolls inside the ring; the ring itself sets the outer reach.
-    return avail * state.sizeFrac;
+    // Non-round rolls outside: total outer extent ≈ R*(1 + 2*step*maxRho).
+    const stepFrac = interpolatedNonRoundScale(cog.type, state.sizeStep);
+    const maxRho   = COG_DEFS[cog.type].maxRho;
+    return (avail / (1 + 2 * stepFrac * maxRho)) * state.sizeFrac;
   }
 
-  // Pen position based on selected hole. Hole at body coords (hx, hy) where
-  // hx = dist*r*cos(ang), hy = dist*r*sin(ang). After body rotation θ_body:
-  //   pen_offset_fixed = (hx*cos θ - hy*sin θ, hx*sin θ + hy*cos θ)
-  // For hypotrochoid: θ_body = -k·t (k = (R-r)/r)
-  // For epitrochoid:  θ_body = +k·t + π (k = (R+r)/r)
   function stateAt(t) {
-    const cog = COGS[state.cogIdx];
+    const cog = getActiveCog();
     const ringR = getR();
     const R = rollingRadiusFor(cog, state.fixed, ringR);
     const RX = ringCx(), RY = ringCy();
@@ -725,7 +921,6 @@
 
     if (cog.type === 'round') {
       const r = R * cog.ratio;
-      // Hole at body coords (hx, hy); for round, body radius = r so dist*r is the radial distance.
       const hx = hole.dist * r * Math.cos(hole.ang);
       const hy = hole.dist * r * Math.sin(hole.ang);
       let gx, gy, px, py, theta;
@@ -749,15 +944,14 @@
       return { gx, gy, px, py, R, r, theta, cog };
     }
 
-    // Non-round cog rolling on a circle of radius R.
     const def   = COG_DEFS[cog.type];
-    const scale = bodyScaleFor(cog, R);
+    // Use ringR (not the smaller rolling radius R) so the body scale matches what
+    // solveInsideRollingRadius used when computing R.
+    const scale = bodyScaleFor(cog, ringR);
     const pose = getNonRoundState(cog, state.fixed, t, R, RX, RY, scale);
     const gx = pose.gx, gy = pose.gy, theta = pose.theta;
     const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
-    // Pen at the selected hole. Body radius at hole.ang is ρ(ang)·scale, so
-    // hole position in body = dist·ρ(ang)·scale·(cos ang, sin ang).
     const rho = def.rho(hole.ang);
     const hbx = hole.dist * rho * scale * Math.cos(hole.ang);
     const hby = hole.dist * rho * scale * Math.sin(hole.ang);
@@ -803,7 +997,6 @@
       gearCtx.fillStyle = fill;
       gearCtx.beginPath(); gearCtx.arc(RX, RY, R, 0, Math.PI*2); gearCtx.fill(); gearCtx.stroke();
     } else {
-      // Ring band: fill the donut (R to R+10)
       gearCtx.fillStyle = fill;
       gearCtx.beginPath();
       gearCtx.arc(RX, RY, R + 10, 0, Math.PI*2);
@@ -818,8 +1011,16 @@
   function drawCog(s) {
     const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
     const fill = 'rgba(248,248,240,0.25)';
-    gearCtx.lineWidth = 1.2;
+    const RX = ringCx(), RY = ringCy();
 
+    // ── Body (clipped to ring interior so it never visually escapes) ──────
+    gearCtx.save();
+    if (state.fixed === 'ring') {
+      gearCtx.beginPath();
+      gearCtx.arc(RX, RY, s.R + 2, 0, Math.PI * 2);
+      gearCtx.clip();
+    }
+    gearCtx.lineWidth = 1.2;
     if (s.cog.type === 'round') {
       gearCtx.fillStyle = fill;
       gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.fill();
@@ -841,10 +1042,13 @@
       gearCtx.strokeStyle = accent;
       gearCtx.stroke();
     }
+    gearCtx.restore();
 
+    // ── Center dot, spoke, pen dot (drawn unclipped) ──────────────────────
+    gearCtx.strokeStyle = accent;
+    gearCtx.lineWidth = 1.2;
     gearCtx.fillStyle = accent;
     gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
-
     gearCtx.beginPath(); gearCtx.moveTo(s.gx, s.gy); gearCtx.lineTo(s.px, s.py); gearCtx.stroke();
     gearCtx.fillStyle = state.color;
     gearCtx.beginPath(); gearCtx.arc(s.px, s.py, 4.5, 0, Math.PI*2); gearCtx.fill();
@@ -897,7 +1101,7 @@
     requestAnimationFrame(frame);
   }
 
-  // ---- Drag: rotate cog (locked + paused) OR move ring (unlocked) ----
+  // ---- Drag ----
   let dragging = false, dragMode = null, lastAngle = 0;
   let moveAnchorX = 0, moveAnchorY = 0;
   let autoRelockTimer = null;
@@ -940,8 +1144,6 @@
       const p = pointerXY(e);
       state.ringX = p.x - moveAnchorX;
       state.ringY = p.y - moveAnchorY;
-      // Clamp so the ring center stays within the canvas (it can extend past
-      // the edge, but its center can't leave the visible area).
       state.ringX = Math.max(-cx, Math.min(cx, state.ringX));
       state.ringY = Math.max(-cy, Math.min(cy, state.ringY));
     } else if (dragMode === 'rotate') {
@@ -990,63 +1192,22 @@
       breakSegment();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
-      updateAllCogIndicators();
     });
     colorsEl.appendChild(el);
   });
 
-  // ---- UI: Cogs ----
-  const cogsEl = document.getElementById('cogs');
-  function cogButtonSVG(cog, holeIdx, color) {
-    const hole = cog.holes[holeIdx];
-    if (cog.type === 'round') {
-      const r = 18 * cog.ratio;
-      const cxIn = 38 - r;
-      const hxRel = hole.dist * r * Math.cos(hole.ang);
-      const hyRel = hole.dist * r * Math.sin(hole.ang);
-      return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-        '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.35"/>' +
-        '<circle cx="' + cxIn + '" cy="20" r="' + r + '" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
-        '<circle cx="' + (cxIn + hxRel).toFixed(2) + '" cy="' + (20 + hyRel).toFixed(2) + '" r="1.6" fill="' + color + '"/>' +
-      '</svg>';
-    }
-    // Non-round: draw the body shape, sized to fit the icon viewport.
-    const def = COG_DEFS[cog.type];
-    const tab = COG_TABLES[cog.type];
-    // Icon scale: body fits inside the 18-unit reference circle.
-    const svgScale = 16 / def.maxRho;
-    let path = '';
-    const N = 96;
-    for (let i = 0; i <= N; i++) {
-      const u = (i / N) * 2 * Math.PI;
-      const p = def.eval(u);
-      path += (i === 0 ? 'M' : 'L') + (20 + svgScale * p.x).toFixed(2) + ',' + (20 + svgScale * p.y).toFixed(2);
-    }
-    path += 'Z';
-    const rho = def.rho(hole.ang);
-    const hxRel = svgScale * hole.dist * rho * Math.cos(hole.ang);
-    const hyRel = svgScale * hole.dist * rho * Math.sin(hole.ang);
-    return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-      '<circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25"/>' +
-      '<path d="' + path + '" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
-      '<circle cx="' + (20 + hxRel).toFixed(2) + '" cy="' + (20 + hyRel).toFixed(2) + '" r="1.4" fill="' + color + '"/>' +
-    '</svg>';
-  }
-  function previewHoleIdx(i) {
-    if (i === state.cogIdx) return state.holeIdx;
-    return matchHoleByFraction(COGS[state.cogIdx], state.holeIdx, COGS[i]);
-  }
-  function rebuildCogButton(i) {
-    const btn = cogsEl.children[i];
-    if (!btn) return;
-    btn.innerHTML = cogButtonSVG(COGS[i], previewHoleIdx(i), state.color);
-  }
-  function updateAllCogIndicators() {
-    for (let i = 0; i < COGS.length; i++) rebuildCogButton(i);
-  }
-  function setActiveCog(idx) {
-    cogsEl.querySelectorAll('.cog-btn').forEach((x, i) => x.classList.toggle('active', i === idx));
-  }
+  // ---- UI: Shape buttons ----
+  const SHAPE_SVGS = {
+    round:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/></svg>',
+    plus:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+    triangle:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 4L20.5 19.5H3.5Z"/></svg>',
+    pentagon:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><polygon points="12,3 20.6,9.2 17.3,19.3 6.7,19.3 3.4,9.2"/></svg>',
+    rectangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="12" rx="9.5" ry="5.8"/></svg>',
+    hexagon:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><polygon points="12,3.2 19.2,7.4 19.2,16.6 12,20.8 4.8,16.6 4.8,7.4"/></svg>',
+  };
+
+  const shapeBtnsEl = document.getElementById('shape-btns');
+
   function matchHoleByFraction(oldCog, oldHoleIdx, newCog) {
     const target = oldCog.holes[Math.min(oldHoleIdx, oldCog.holes.length - 1)].dist;
     let best = 0, bestDiff = Infinity;
@@ -1057,25 +1218,74 @@
     return best;
   }
 
-  COGS.forEach((cog, i) => {
-    const btn = document.createElement('div');
-    btn.className = 'cog-btn' + (i === state.cogIdx ? ' active' : '');
-    btn.title = cog.name;
-    btn.innerHTML = cogButtonSVG(cog, previewHoleIdx(i), state.color);
-    btn.addEventListener('click', () => {
-      if (i !== state.cogIdx) {
-        const newHoleIdx = matchHoleByFraction(COGS[state.cogIdx], state.holeIdx, COGS[i]);
-        state.cogIdx = i;
-        state.holeIdx = newHoleIdx;
+  SHAPE_TYPES.forEach(type => {
+    const el = document.createElement('div');
+    el.className = 'chip' + (type === state.shapeType ? ' active' : '');
+    el.innerHTML = SHAPE_SVGS[type];
+    el.title = SHAPE_LABELS[type];
+    el.setAttribute('aria-label', SHAPE_LABELS[type]);
+    el.addEventListener('click', () => {
+      if (type !== state.shapeType) {
+        const oldCog = getActiveCog();
+        state.shapeType = type;
+        const newCog = getActiveCog();
+        state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
         state.t = 0;
         breakSegment();
-        setActiveCog(i);
-        updateAllCogIndicators();
+        updateShapeUI();
       }
       openHolePicker();
     });
-    cogsEl.appendChild(btn);
+    shapeBtnsEl.appendChild(el);
   });
+
+  // ---- UI: Cog size slider ----
+  const cogSizeSlider = document.getElementById('cog-size');
+  const cogSizeValEl  = document.getElementById('cog-size-val');
+
+  function updateSizeLabel() {
+    cogSizeValEl.textContent = sizePercentFromStep(state.sizeStep) + '%';
+  }
+
+  cogSizeSlider.value = state.sizeStep;
+  cogSizeSlider.addEventListener('input', () => {
+    const newStep = parseInt(cogSizeSlider.value, 10);
+    if (newStep === state.sizeStep) return;
+    if (state.shapeType === 'round') {
+      const oldCog = getActiveCog();
+      state.sizeStep = newStep;
+      const newCog = getActiveCog();
+      state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
+    } else {
+      state.sizeStep = newStep;
+      const cog = getActiveCog();
+      state.holeIdx = Math.min(state.holeIdx, cog.holes.length - 1);
+    }
+    state.t = 0;
+    breakSegment();
+    updateSizeLabel();
+    updateHoleLabel();
+  });
+  updateSizeLabel();
+
+  // ---- UI: Hole label + pick button ----
+  const holeLabelEl = document.getElementById('hole-label');
+
+  function updateHoleLabel() {
+    const cog = getActiveCog();
+    holeLabelEl.textContent = 'Hole ' + (state.holeIdx + 1) + ' of ' + cog.holes.length;
+  }
+  updateHoleLabel();
+
+  document.getElementById('pick-hole-btn').addEventListener('click', openHolePicker);
+
+  function updateShapeUI() {
+    shapeBtnsEl.querySelectorAll('.chip').forEach((el, i) => {
+      el.classList.toggle('active', SHAPE_TYPES[i] === state.shapeType);
+    });
+    updateSizeLabel();
+    updateHoleLabel();
+  }
 
   // ---- UI: Fixed type ----
   document.querySelectorAll('[data-fixed]').forEach(el => {
@@ -1146,6 +1356,12 @@
   function syncPauseIcon() {
     document.getElementById('pause-icon').innerHTML = state.paused ? PLAY_ICON : PAUSE_ICON;
   }
+  function pauseAutoDraw(reason, ms) {
+    if (state.paused) return;
+    state.paused = true;
+    syncPauseIcon();
+    if (reason) showHint(reason, ms || 1400);
+  }
   document.getElementById('fb-pause').addEventListener('click', () => {
     state.paused = !state.paused;
     syncPauseIcon();
@@ -1177,9 +1393,8 @@
     state.locked = !state.locked;
     updateLockUI();
     if (!state.locked) {
+      pauseAutoDraw('Paused while ring is unlocked', 1600);
       showHint('Drag to move ring · Auto-locks after 4s', 2000);
-      // Start the relock timer on entering unlocked mode too, in case user
-      // unlocks but doesn't drag.
       scheduleAutoRelock();
     } else {
       clearTimeout(autoRelockTimer);
@@ -1192,6 +1407,7 @@
   const drawer = document.getElementById('drawer');
   const overlay = document.getElementById('overlay');
   document.getElementById('menu-btn').addEventListener('click', () => {
+    pauseAutoDraw('Paused while drawer is open', 1500);
     drawer.classList.add('open');
     overlay.classList.add('open');
   });
@@ -1206,14 +1422,12 @@
   const holeTitle = document.getElementById('hole-modal-title');
 
   function buildHoleModalSVG() {
-    const cog = COGS[state.cogIdx];
+    const cog = getActiveCog();
     holeTitle.textContent = 'Cog ' + cog.name + ' · choose a pen hole';
-    // Sized so the body's max extent fits inside the viewBox.
     const maxRho = cog.type === 'round' ? 1 : COG_DEFS[cog.type].maxRho;
     const half = (maxRho + 0.10).toFixed(2);
     const sz = (parseFloat(half) * 2).toFixed(2);
     let svg = '<svg viewBox="-' + half + ' -' + half + ' ' + sz + ' ' + sz + '" xmlns="http://www.w3.org/2000/svg">';
-    // Cog body
     if (cog.type === 'round') {
       svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
     } else {
@@ -1228,9 +1442,7 @@
       path += 'Z';
       svg += '<path d="' + path + '" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="' + (0.012 * maxRho).toFixed(4) + '"/>';
     }
-    // Center pivot
     svg += '<circle cx="0" cy="0" r="' + (0.025 * maxRho).toFixed(4) + '" fill="rgba(255,255,255,0.7)"/>';
-    // Holes
     const visR = 0.038 * maxRho;
     const hitR = 0.075 * maxRho;
     cog.holes.forEach((h, i) => {
@@ -1248,14 +1460,13 @@
     });
     svg += '</svg>';
     holeCogEl.innerHTML = svg;
-    // Wire click handlers
     holeCogEl.querySelectorAll('g[data-hole]').forEach(g => {
       const i = parseInt(g.getAttribute('data-hole'), 10);
       g.addEventListener('click', () => {
         if (i !== state.holeIdx) {
           state.holeIdx = i;
           breakSegment();
-          updateAllCogIndicators();
+          updateHoleLabel();
         }
         closeHolePicker();
       });
@@ -1270,7 +1481,6 @@
   }
   document.getElementById('hole-modal-close').addEventListener('click', closeHolePicker);
   holeModal.addEventListener('click', (e) => {
-    // Click on backdrop (not on the cog or close button) closes
     if (e.target === holeModal) closeHolePicker();
   });
 
@@ -1294,7 +1504,7 @@
     const s0 = stateAt(state.t);
     lastPen = { x: s0.px, y: s0.py };
   }
-  showHint('Drag to rotate · Tap a cog to pick a hole', 2600);
+  showHint('Drag to rotate · Tap a shape to pick a hole', 2600);
   requestAnimationFrame(frame);
 })();
 </script>
