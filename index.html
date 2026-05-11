@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
-<title>Spirograph</title>
+<title>Mandaloop</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
   html, body {
@@ -95,14 +95,14 @@
   .chip.active { background: #222; color: #fff; border-color: #222; }
   body.dark .chip.active { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
 
-  .colors { display: grid; grid-template-columns: repeat(9, 1fr); gap: 8px; }
+  .colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
   .color {
     aspect-ratio: 1; border-radius: 50%; cursor: pointer;
     border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
   }
-  .color[data-ink="#ffffff"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.28); }
-  body.dark .color[data-ink="#000000"] { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28); }
+  .color[data-ink="#ffffff"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.28) !important; }
+  body.dark .color[data-ink="#000000"] { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28) !important; }
   .color.active { border-color: #222; transform: scale(1.08); }
   body.dark .color.active { border-color: #fff; }
 
@@ -131,7 +131,7 @@
     -webkit-appearance: none; appearance: none;
     width: 22px; height: 22px; border-radius: 50%; background: #222;
     cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-    margin-top: -9px; /* center thumb on 4px track: -(22-4)/2 */
+    margin-top: -9px;
   }
   input[type=range]::-moz-range-thumb {
     width: 22px; height: 22px; border-radius: 50%; background: #222;
@@ -150,14 +150,13 @@
   body.dark .btn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
   .btn:active { transform: scale(0.98); }
 
-  /* Hole row */
-  .hole-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
-  .hole-row .note { margin: 0; }
-  .hole-row .btn { flex: none; padding: 7px 13px; font-size: 13px; }
-
   /* Bottom-right floating controls */
   .float-controls {
     position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); right: 16px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 25;
+  }
+  .float-controls-left {
+    position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 16px;
     display: flex; flex-direction: column; gap: 10px; z-index: 25;
   }
   .fbtn {
@@ -171,6 +170,7 @@
   .fbtn.small { width: 44px; height: 44px; }
   body.dark .fbtn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
   .fbtn svg { width: 22px; height: 22px; }
+  .fbtn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
   .fbtn.primary { background: #222; color: #fff; border-color: #222; }
   body.dark .fbtn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
 
@@ -185,33 +185,12 @@
   }
   #hint.show { opacity: 1; }
 
-  /* Hole picker modal */
-  #hole-modal {
-    position: fixed; inset: 0; z-index: 60;
-    background: rgba(0,0,0,0.92);
-    display: none; align-items: center; justify-content: center;
-    padding: 20px;
+  /* Pen position sub-label */
+  .sub-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: #888; font-weight: 600; margin-bottom: 6px; margin-top: 12px;
   }
-  #hole-modal.open { display: flex; }
-  #hole-modal .hole-cog {
-    width: 88vmin; height: 88vmin;
-    max-width: 540px; max-height: 540px;
-    color: #f0f0f0;
-  }
-  #hole-modal .hole-cog svg { width: 100%; height: 100%; display: block; }
-  #hole-modal .hole-modal-title {
-    position: absolute; top: max(20px, env(safe-area-inset-top)); left: 0; right: 0;
-    text-align: center; color: #ccc; font-size: 13px; letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-  #hole-modal-close {
-    position: absolute; top: max(16px, env(safe-area-inset-top)); right: 16px;
-    width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
-    display: flex; align-items: center; justify-content: center;
-    color: #f0f0f0; cursor: pointer;
-  }
-  #hole-modal-close svg { width: 18px; height: 18px; }
+  body.dark .sub-label { color: #999; }
 </style>
 </head>
 <body>
@@ -237,27 +216,42 @@
     </button>
   </div>
 
+  <div class="float-controls-left">
+    <button class="fbtn small" id="fb-back" disabled aria-label="Back" title="Back (⌘Z)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button class="fbtn small" id="fb-forward" disabled aria-label="Forward" title="Forward (⌘⇧Z)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+
   <div id="overlay"></div>
 
   <div id="drawer">
-    <div class="drawer-title">Spirograph</div>
+    <div class="drawer-title">Mandaloop</div>
 
     <div class="section">
       <h3>Cog</h3>
       <div class="row" id="shape-btns"></div>
       <div class="slider-wrap" style="margin-top:14px">
-        <input type="range" id="cog-size" min="0" max="80" step="1" value="40">
-        <span class="val" id="cog-size-val">50%</span>
+        <input type="range" id="cog-size" min="0" max="80" step="1" value="35">
+        <span class="val" id="cog-size-val">45%</span>
       </div>
-      <div class="hole-row">
-        <span class="note" id="hole-label">Hole 4</span>
-        <button class="btn" id="pick-hole-btn">Pick hole</button>
+      <div class="sub-label">Pen Position</div>
+      <div class="slider-wrap">
+        <input type="range" id="pen-pos" min="0" max="90" step="1" value="50">
+        <span class="val" id="pen-pos-val">50%</span>
       </div>
     </div>
 
     <div class="section">
       <h3>Ink Color</h3>
       <div class="colors" id="colors"></div>
+      <div class="sub-label">Pen Width</div>
+      <div class="slider-wrap">
+        <input type="range" id="pen-width" min="0.5" max="8" step="0.5" value="2">
+        <span class="val" id="pen-width-val">2</span>
+      </div>
     </div>
 
     <div class="section">
@@ -303,14 +297,6 @@
 
   <div id="hint">Drag on the canvas to rotate</div>
 
-  <div id="hole-modal">
-    <div class="hole-modal-title" id="hole-modal-title">Choose a pen hole</div>
-    <button id="hole-modal-close" aria-label="Close">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5l-14 14"/></svg>
-    </button>
-    <div class="hole-cog" id="hole-cog"></div>
-  </div>
-
 <script>
 (function(){
   const trailCv = document.getElementById('trail');
@@ -321,21 +307,45 @@
   let W = 0, H = 0, cx = 0, cy = 0;
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
-  // ROYGBIV
-  const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0','#000000','#ffffff'];
+  // Crayola 24-pack (2019) with original vivid values for ROYGBIV matches
+  const COLORS = [
+    { hex: '#ff1f1f', name: 'Red' },           // original vivid red
+    { hex: '#FD0E35', name: 'Scarlet' },
+    { hex: '#FF5349', name: 'Red-Orange' },
+    { hex: '#ff8a00', name: 'Orange' },         // original vivid orange
+    { hex: '#FFAE42', name: 'Yellow-Orange' },
+    { hex: '#ffd400', name: 'Yellow' },         // original vivid yellow
+    { hex: '#F0E891', name: 'Green-Yellow' },
+    { hex: '#C5E384', name: 'Yellow-Green' },
+    { hex: '#1fc24a', name: 'Green' },          // original vivid green
+    { hex: '#0D98BA', name: 'Blue-Green' },
+    { hex: '#02A4D3', name: 'Cerulean' },
+    { hex: '#1f7dff', name: 'Blue' },           // original vivid blue
+    { hex: '#3C69E7', name: 'Bluetiful' },
+    { hex: '#4b1f9c', name: 'Indigo' },         // original vivid indigo
+    { hex: '#7366BD', name: 'Blue-Violet' },
+    { hex: '#9c27b0', name: 'Violet' },         // original vivid violet
+    { hex: '#C0448F', name: 'Red-Violet' },
+    { hex: '#F75394', name: 'Violet-Red' },
+    { hex: '#FFAACC', name: 'Carnation Pink' },
+    { hex: '#FDD5B1', name: 'Apricot' },
+    { hex: '#AF593E', name: 'Brown' },
+    { hex: '#8B8680', name: 'Gray' },
+    { hex: '#000000', name: 'Black' },
+    { hex: '#FFFFFF', name: 'White' },
+  ];
 
   const ROUND_MIN_PERCENT = 10;
   const ROUND_MAX_PERCENT = 90;
-  const ROUND_STEP_COUNT = ROUND_MAX_PERCENT - ROUND_MIN_PERCENT + 1;
 
   // Specialty shapes; round cogs are generated dynamically for any whole
   // number percentage between 10% and 90%.
   const COGS = [
-    { type: 'plus',      name: 'Square',    scale: 0.22, fixedBodyFrac: 0.165, nHoles: 12 },
-    { type: 'triangle',  name: 'Triangle',  scale: 0.25, fixedBodyFrac: 0.175, nHoles: 9  },
-    { type: 'rectangle', name: 'Oval',      scale: 0.17, fixedBodyFrac: 0.140, nHoles: 11 },
-    { type: 'hexagon',   name: 'Hexagon',   scale: 0.26, nHoles: 13 },
-    { type: 'pentagon',  name: 'Pentagon',  scale: 0.24, nHoles: 15 },
+    { type: 'plus',      name: 'Square',    scale: 0.22, fixedBodyFrac: 0.165 },
+    { type: 'triangle',  name: 'Triangle',  scale: 0.25, fixedBodyFrac: 0.175 },
+    { type: 'rectangle', name: 'Oval',      scale: 0.17, fixedBodyFrac: 0.140 },
+    { type: 'hexagon',   name: 'Hexagon',   scale: 0.26 },
+    { type: 'pentagon',  name: 'Pentagon',  scale: 0.24 },
   ];
 
   // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
@@ -447,8 +457,7 @@
       };
     }()),
     hexagon: (function() {
-      // Smooth convex 6-fold support curve. This keeps the hexagonal read
-      // while avoiding the corner-tipping behavior from hard-sided polygons.
+      // Smooth convex 6-fold support curve.
       const a = 0.022;
       const phi0 = Math.PI / 2;
       function h(theta) {
@@ -484,9 +493,7 @@
       };
     }()),
     pentagon: (function() {
-      // Smooth convex 5-fold support curve. This preserves a pentagon-like
-      // silhouette while removing the flat-side/corner transitions that make
-      // the cog visibly tip and rock in the rolling solver.
+      // Smooth convex 5-fold support curve.
       const a = 0.032;
       const phi0 = Math.PI / 2;
       function h(theta) {
@@ -583,126 +590,6 @@
     };
   }
 
-  function distributeRing(holes, count, dist, startAng) {
-    for (let i = 0; i < count; i++) {
-      holes.push({ dist, ang: startAng + (i / count) * 2 * Math.PI });
-    }
-  }
-
-  function buildRoundHoles(n) {
-    const holes = [];
-    if (n <= 0) return holes;
-    holes.push({ dist: 0.14, ang: 0 });
-    if (n === 1) return holes;
-    // For round cogs, angle alone only rotates the same resulting curve, so
-    // maximize variation by giving every available hole a unique radius.
-    // Keep the visual feel of the classic picker by laying those unique radii
-    // out along a gentle spiral instead of stacked concentric rings.
-    const remaining = n - 1;
-    const minR = 0.24;
-    const maxR = 0.86;
-    const turns = 1.25 + remaining * 0.11;
-    for (let i = 0; i < remaining; i++) {
-      const t = remaining === 1 ? 1 : i / (remaining - 1);
-      const dist = minR + (maxR - minR) * t;
-      const ang = Math.PI / 5 + t * turns * 2 * Math.PI;
-      holes.push({ dist, ang });
-    }
-    return holes;
-  }
-
-  function buildTriangleHoles() {
-    return buildRadialVertexRuns(
-      [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6],
-      [
-        [0.16, 0.38, 0.60],
-        [0.23, 0.47, 0.73],
-        [0.30, 0.56, 0.84],
-      ]
-    );
-  }
-
-  function buildRectangleHoles() {
-    return buildRadialVertexRuns(
-      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
-      [
-        [0.18, 0.44],
-        [0.24, 0.54],
-        [0.31, 0.66],
-        [0.39, 0.80],
-      ],
-      [{ dist: 0.12, ang: 0 }, { dist: 0.70, ang: 0 }, { dist: 0.86, ang: Math.PI }]
-    );
-  }
-
-  function buildHexagonHoles() {
-    return buildRadialVertexRuns([
-      Math.PI / 2,
-      Math.PI / 2 + Math.PI / 3,
-      Math.PI / 2 + 2 * Math.PI / 3,
-      Math.PI / 2 + Math.PI,
-      Math.PI / 2 + 4 * Math.PI / 3,
-      Math.PI / 2 + 5 * Math.PI / 3,
-    ], [
-      [0.14, 0.38],
-      [0.18, 0.44],
-      [0.22, 0.50],
-      [0.26, 0.58],
-      [0.30, 0.66],
-      [0.34, 0.76],
-    ], [{ dist: 0.10, ang: 0 }]);
-  }
-  function buildPlusHoles() {
-    return buildRadialVertexRuns(
-      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
-      [
-        [0.16, 0.34, 0.56],
-        [0.22, 0.42, 0.64],
-        [0.28, 0.50, 0.72],
-        [0.36, 0.60, 0.84],
-      ]
-    );
-  }
-  function buildPentagonHoles() {
-    return buildRadialVertexRuns([
-      Math.PI / 2,
-      Math.PI / 2 + 2 * Math.PI / 5,
-      Math.PI / 2 + 4 * Math.PI / 5,
-      Math.PI / 2 + 6 * Math.PI / 5,
-      Math.PI / 2 + 8 * Math.PI / 5,
-    ], [
-      [0.15, 0.34, 0.55],
-      [0.19, 0.40, 0.62],
-      [0.24, 0.46, 0.69],
-      [0.29, 0.52, 0.76],
-      [0.31, 0.58, 0.84],
-    ]);
-  }
-
-  function buildRadialVertexRuns(vertexAngles, perVertexDists, extras) {
-    const holes = [];
-    vertexAngles.forEach((baseAng, i) => {
-      const dists = perVertexDists[i] || [];
-      dists.forEach((dist) => {
-        holes.push({ dist, ang: baseAng });
-      });
-    });
-    if (extras && extras.length) holes.push(...extras);
-    return holes;
-  }
-
-  function rhoOf(cog, ang) {
-    return cog.type === 'round' ? 1 : COG_DEFS[cog.type].rho(ang);
-  }
-  COGS.forEach(c => {
-    if (c.type === 'round') c.holes = buildRoundHoles(c.nHoles);
-    else if (c.type === 'plus') c.holes = buildPlusHoles();
-    else if (c.type === 'triangle') c.holes = buildTriangleHoles();
-    else if (c.type === 'rectangle') c.holes = buildRectangleHoles();
-    else if (c.type === 'hexagon') c.holes = buildHexagonHoles();
-    else if (c.type === 'pentagon') c.holes = buildPentagonHoles();
-  });
-
   // ---- Shape / size constants ----
   const SHAPE_TYPES  = ['round', 'rectangle', 'triangle', 'plus', 'pentagon', 'hexagon'];
   const SHAPE_LABELS = { round: 'Circle', rectangle: 'Oval', triangle: 'Triangle', plus: 'Square', pentagon: 'Pentagon', hexagon: 'Hexagon' };
@@ -721,10 +608,6 @@
     return ROUND_MIN_PERCENT + step;
   }
 
-  function roundHoleCountForPercent(percent) {
-    return Math.round(6 + ((percent - ROUND_MIN_PERCENT) / (ROUND_MAX_PERCENT - ROUND_MIN_PERCENT)) * (34 - 6));
-  }
-
   const ROUND_COG_CACHE = new Map();
   function buildRoundCog(step) {
     const percent = sizePercentFromStep(step);
@@ -734,9 +617,7 @@
       type: 'round',
       name: percent + '%',
       ratio: percent / 100,
-      nHoles: roundHoleCountForPercent(percent),
     };
-    cog.holes = buildRoundHoles(cog.nHoles);
     ROUND_COG_CACHE.set(percent, cog);
     return cog;
   }
@@ -843,7 +724,7 @@
     for (let i = 0; i < 20; i++) {
       const mid = (lo + hi) / 2;
       const outerReach = mid * measureInsideReachCached(cog, bodyScale / mid);
-      if (outerReach <= ringR * 0.99) lo = mid;  // 1% margin keeps cog snug while absorbing sampling gaps
+      if (outerReach <= ringR * 0.99) lo = mid;
       else hi = mid;
     }
     rollingRadiusCache.set(cacheKey, lo);
@@ -861,10 +742,11 @@
   const state = {
     fixed: 'ring',
     shapeType: 'round',
-    sizeStep: 35,          // 0–80 → 10%–90%; default 45%
-    holeIdx: 3,
+    sizeStep: 35,       // 0–80 → 10%–90%; default 45%
+    penPos: 0.50,       // pen position: 0.0 (center) to 0.90 (near edge)
+    penWidth: 2,        // stroke width in CSS pixels
     sizeFrac: 0.75,
-    color: COLORS[4],
+    color: COLORS[11].hex,  // Blue
     bg: 'black',
     speed: 6,
     paused: true,
@@ -874,8 +756,9 @@
   };
   document.body.classList.add('dark');
 
-  const history = [];
-  let segId = 0;
+  // Each segment: { points: [{x,y}], state: {color,penWidth,penPos,shapeType,sizeStep,t} }
+  let segments = [];
+  let currentIdx = -1;   // index of last visible segment; -1 = empty canvas
   let lastPen = null;
 
   function ringCx() { return cx + state.ringX; }
@@ -906,7 +789,6 @@
     if (cog.type === 'round') {
       return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
     }
-    // Non-round rolls outside: total outer extent ≈ R*(1 + 2*step*maxRho).
     const stepFrac = interpolatedNonRoundScale(cog.type, state.sizeStep);
     const maxRho   = COG_DEFS[cog.type].maxRho;
     return (avail / (1 + 2 * stepFrac * maxRho)) * state.sizeFrac;
@@ -917,12 +799,12 @@
     const ringR = getR();
     const R = rollingRadiusFor(cog, state.fixed, ringR);
     const RX = ringCx(), RY = ringCy();
-    const hole = cog.holes[state.holeIdx];
 
     if (cog.type === 'round') {
       const r = R * cog.ratio;
-      const hx = hole.dist * r * Math.cos(hole.ang);
-      const hy = hole.dist * r * Math.sin(hole.ang);
+      // Pen sits at penPos fraction of the cog radius along the body-frame x-axis.
+      const hx = state.penPos * r;
+      const hy = 0;
       let gx, gy, px, py, theta;
       if (state.fixed === 'circle') {
         gx = RX + (R + r) * Math.cos(t);
@@ -944,17 +826,16 @@
       return { gx, gy, px, py, R, r, theta, cog };
     }
 
-    const def   = COG_DEFS[cog.type];
-    // Use ringR (not the smaller rolling radius R) so the body scale matches what
-    // solveInsideRollingRadius used when computing R.
+    // Non-round: pen along body-frame x-axis at penPos * scale.
+    // maxRho for these shapes is ~1.02–1.06, so penPos=0.90 stays safely
+    // inside the body boundary in all orientations.
     const scale = bodyScaleFor(cog, ringR);
     const pose = getNonRoundState(cog, state.fixed, t, R, RX, RY, scale);
     const gx = pose.gx, gy = pose.gy, theta = pose.theta;
     const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
-    const rho = def.rho(hole.ang);
-    const hbx = hole.dist * rho * scale * Math.cos(hole.ang);
-    const hby = hole.dist * rho * scale * Math.sin(hole.ang);
+    const hbx = state.penPos * scale;
+    const hby = 0;
     const px = gx + hbx * cosT - hby * sinT;
     const py = gy + hbx * sinT + hby * cosT;
 
@@ -963,26 +844,21 @@
 
   function redrawTrail() {
     trailCtx.clearRect(0, 0, W, H);
-    if (history.length < 2) return;
+    if (currentIdx < 0) return;
     trailCtx.lineCap = 'round';
     trailCtx.lineJoin = 'round';
-    trailCtx.lineWidth = 1.8;
-    let started = false, lastSeg = -1, lastColor = null;
-    for (let i = 0; i < history.length; i++) {
-      const p = history[i];
-      const newPath = !started || p.seg !== lastSeg || p.color !== lastColor;
-      if (newPath) {
-        if (started) trailCtx.stroke();
-        trailCtx.beginPath();
-        trailCtx.strokeStyle = p.color;
-        trailCtx.moveTo(p.x, p.y);
-        started = true;
-      } else {
-        trailCtx.lineTo(p.x, p.y);
+    for (let si = 0; si <= currentIdx; si++) {
+      const seg = segments[si];
+      if (seg.points.length < 2) continue;
+      trailCtx.strokeStyle = seg.state.color;
+      trailCtx.lineWidth = seg.state.penWidth;
+      trailCtx.beginPath();
+      trailCtx.moveTo(seg.points[0].x, seg.points[0].y);
+      for (let pi = 1; pi < seg.points.length; pi++) {
+        trailCtx.lineTo(seg.points[pi].x, seg.points[pi].y);
       }
-      lastSeg = p.seg; lastColor = p.color;
+      trailCtx.stroke();
     }
-    if (started) trailCtx.stroke();
   }
 
   function drawFixedCircle(R) {
@@ -1064,31 +940,113 @@
     drawCog(s);
   }
 
+  function captureState() {
+    return {
+      color: state.color,
+      penWidth: state.penWidth,
+      penPos: state.penPos,
+      shapeType: state.shapeType,
+      sizeStep: state.sizeStep,
+      t: state.t,
+    };
+  }
+
   function step(deltaT) {
     if (deltaT === 0) return;
     const subdivs = Math.max(1, Math.ceil(Math.abs(deltaT) * 80));
     const dt = deltaT / subdivs;
     trailCtx.lineCap = 'round';
     trailCtx.lineJoin = 'round';
-    trailCtx.lineWidth = 1.8;
+    trailCtx.lineWidth = state.penWidth;
     trailCtx.strokeStyle = state.color;
     for (let i = 0; i < subdivs; i++) {
       state.t += dt;
       const s = stateAt(state.t);
-      if (lastPen) {
+      if (lastPen === null) {
+        // Start a new segment — discard any forward history first
+        if (currentIdx < segments.length - 1) segments.splice(currentIdx + 1);
+        segments.push({ points: [{ x: s.px, y: s.py }], state: captureState() });
+        currentIdx = segments.length - 1;
+      } else {
         trailCtx.beginPath();
         trailCtx.moveTo(lastPen.x, lastPen.y);
         trailCtx.lineTo(s.px, s.py);
         trailCtx.stroke();
+        segments[currentIdx].points.push({ x: s.px, y: s.py });
+        segments[currentIdx].state.t = state.t; // keep end-t current
       }
-      history.push({ x: s.px, y: s.py, color: state.color, seg: segId });
       lastPen = { x: s.px, y: s.py };
     }
+    syncNavBtns();
   }
 
   function breakSegment() {
-    segId++;
     lastPen = null;
+  }
+
+  function syncNavBtns() {
+    const backBtn    = document.getElementById('fb-back');
+    const fwdBtn     = document.getElementById('fb-forward');
+    if (backBtn)    backBtn.disabled    = (currentIdx < 0);
+    if (fwdBtn)     fwdBtn.disabled     = (currentIdx >= segments.length - 1);
+  }
+
+  function restoreNavigatedState(seg) {
+    const ss = seg.state;
+    state.color    = ss.color;
+    state.penWidth = ss.penWidth;
+    state.penPos   = ss.penPos;
+    state.shapeType = ss.shapeType;
+    state.sizeStep = ss.sizeStep;
+    state.t        = ss.t;
+    // Sync all UI controls to match restored state
+    syncAllUI();
+  }
+
+  function syncAllUI() {
+    // Color swatches
+    document.querySelectorAll('#colors .color').forEach(el => {
+      el.classList.toggle('active', el.dataset.ink === state.color);
+    });
+    // Shape buttons
+    document.querySelectorAll('#shape-btns .chip').forEach((el, i) => {
+      el.classList.toggle('active', SHAPE_TYPES[i] === state.shapeType);
+    });
+    // Cog size slider
+    const cogSl = document.getElementById('cog-size');
+    const cogVal = document.getElementById('cog-size-val');
+    if (cogSl) { cogSl.value = state.sizeStep; cogVal.textContent = sizePercentFromStep(state.sizeStep) + '%'; }
+    // Pen position slider
+    const ppSl = document.getElementById('pen-pos');
+    const ppVal = document.getElementById('pen-pos-val');
+    if (ppSl) { ppSl.value = Math.round(state.penPos * 100); ppVal.textContent = ppSl.value + '%'; }
+    // Pen width slider
+    const pwSl = document.getElementById('pen-width');
+    const pwVal = document.getElementById('pen-width-val');
+    if (pwSl) { pwSl.value = state.penWidth; pwVal.textContent = state.penWidth; }
+  }
+
+  function navigateBack() {
+    if (currentIdx < 0) return;
+    currentIdx--;
+    if (currentIdx >= 0) {
+      restoreNavigatedState(segments[currentIdx]);
+      lastPen = segments[currentIdx].points.at(-1);
+    } else {
+      // Went all the way back — empty canvas, restore to initial state
+      lastPen = null;
+    }
+    redrawTrail();
+    syncNavBtns();
+  }
+
+  function navigateForward() {
+    if (currentIdx >= segments.length - 1) return;
+    currentIdx++;
+    restoreNavigatedState(segments[currentIdx]);
+    lastPen = segments[currentIdx].points.at(-1);
+    redrawTrail();
+    syncNavBtns();
   }
 
   let prev = 0;
@@ -1132,10 +1090,6 @@
     dragging = true;
     dragMode = 'rotate';
     lastAngle = pointerAngle(e);
-    if (lastPen === null) {
-      const s = stateAt(state.t);
-      lastPen = { x: s.px, y: s.py };
-    }
   }
   function onMove(e) {
     if (!dragging) return;
@@ -1182,13 +1136,15 @@
 
   // ---- UI: Colors ----
   const colorsEl = document.getElementById('colors');
-  COLORS.forEach((c) => {
+  COLORS.forEach(({ hex, name }) => {
     const el = document.createElement('div');
-    el.className = 'color' + (c === state.color ? ' active' : '');
-    el.style.background = c;
-    el.dataset.ink = c;
+    el.className = 'color' + (hex === state.color ? ' active' : '');
+    el.style.background = hex;
+    el.dataset.ink = hex;
+    el.title = name;
+    el.setAttribute('aria-label', name);
     el.addEventListener('click', () => {
-      state.color = c;
+      state.color = hex;
       breakSegment();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
@@ -1208,16 +1164,6 @@
 
   const shapeBtnsEl = document.getElementById('shape-btns');
 
-  function matchHoleByFraction(oldCog, oldHoleIdx, newCog) {
-    const target = oldCog.holes[Math.min(oldHoleIdx, oldCog.holes.length - 1)].dist;
-    let best = 0, bestDiff = Infinity;
-    for (let i = 0; i < newCog.holes.length; i++) {
-      const diff = Math.abs(newCog.holes[i].dist - target);
-      if (diff < bestDiff) { bestDiff = diff; best = i; }
-    }
-    return best;
-  }
-
   SHAPE_TYPES.forEach(type => {
     const el = document.createElement('div');
     el.className = 'chip' + (type === state.shapeType ? ' active' : '');
@@ -1226,15 +1172,11 @@
     el.setAttribute('aria-label', SHAPE_LABELS[type]);
     el.addEventListener('click', () => {
       if (type !== state.shapeType) {
-        const oldCog = getActiveCog();
         state.shapeType = type;
-        const newCog = getActiveCog();
-        state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
         state.t = 0;
         breakSegment();
         updateShapeUI();
       }
-      openHolePicker();
     });
     shapeBtnsEl.appendChild(el);
   });
@@ -1251,40 +1193,42 @@
   cogSizeSlider.addEventListener('input', () => {
     const newStep = parseInt(cogSizeSlider.value, 10);
     if (newStep === state.sizeStep) return;
-    if (state.shapeType === 'round') {
-      const oldCog = getActiveCog();
-      state.sizeStep = newStep;
-      const newCog = getActiveCog();
-      state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
-    } else {
-      state.sizeStep = newStep;
-      const cog = getActiveCog();
-      state.holeIdx = Math.min(state.holeIdx, cog.holes.length - 1);
-    }
+    state.sizeStep = newStep;
     state.t = 0;
     breakSegment();
     updateSizeLabel();
-    updateHoleLabel();
   });
   updateSizeLabel();
 
-  // ---- UI: Hole label + pick button ----
-  const holeLabelEl = document.getElementById('hole-label');
+  // ---- UI: Pen position slider ----
+  const penPosSlider = document.getElementById('pen-pos');
+  const penPosValEl  = document.getElementById('pen-pos-val');
 
-  function updateHoleLabel() {
-    const cog = getActiveCog();
-    holeLabelEl.textContent = 'Hole ' + (state.holeIdx + 1) + ' of ' + cog.holes.length;
-  }
-  updateHoleLabel();
+  penPosSlider.value = Math.round(state.penPos * 100);
+  penPosValEl.textContent = penPosSlider.value + '%';
+  penPosSlider.addEventListener('input', () => {
+    state.penPos = parseInt(penPosSlider.value, 10) / 100;
+    penPosValEl.textContent = penPosSlider.value + '%';
+    breakSegment();
+  });
 
-  document.getElementById('pick-hole-btn').addEventListener('click', openHolePicker);
+  // ---- UI: Pen width slider ----
+  const penWidthSlider = document.getElementById('pen-width');
+  const penWidthValEl  = document.getElementById('pen-width-val');
+
+  penWidthSlider.value = state.penWidth;
+  penWidthValEl.textContent = state.penWidth;
+  penWidthSlider.addEventListener('input', () => {
+    state.penWidth = parseFloat(penWidthSlider.value);
+    penWidthValEl.textContent = state.penWidth;
+    breakSegment();
+  });
 
   function updateShapeUI() {
     shapeBtnsEl.querySelectorAll('.chip').forEach((el, i) => {
       el.classList.toggle('active', SHAPE_TYPES[i] === state.shapeType);
     });
     updateSizeLabel();
-    updateHoleLabel();
   }
 
   // ---- UI: Fixed type ----
@@ -1326,11 +1270,12 @@
 
   // ---- UI: Drawer buttons ----
   function clearAll() {
-    history.length = 0;
-    trailCtx.clearRect(0, 0, W, H);
-    segId = 0;
+    segments = [];
+    currentIdx = -1;
     lastPen = null;
     state.t = 0;
+    trailCtx.clearRect(0, 0, W, H);
+    syncNavBtns();
   }
   document.getElementById('clear').addEventListener('click', clearAll);
   document.getElementById('save').addEventListener('click', () => {
@@ -1343,7 +1288,7 @@
     c.toBlob(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'spirograph.png';
+      a.href = url; a.download = 'mandaloop.png';
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1368,12 +1313,21 @@
     if (state.paused) {
       showHint('Paused — drag to rotate', 1500);
     } else {
-      const s = stateAt(state.t);
-      lastPen = { x: s.px, y: s.py };
       showHint('Auto-rotating', 900);
     }
   });
+  document.getElementById('fb-back').addEventListener('click', navigateBack);
+  document.getElementById('fb-forward').addEventListener('click', navigateForward);
   document.getElementById('fb-clear').addEventListener('click', clearAll);
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      navigateBack();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+      e.preventDefault();
+      navigateForward();
+    }
+  });
   syncPauseIcon();
 
   // ---- UI: Lock button ----
@@ -1416,74 +1370,6 @@
     overlay.classList.remove('open');
   });
 
-  // ---- Hole picker modal ----
-  const holeModal = document.getElementById('hole-modal');
-  const holeCogEl = document.getElementById('hole-cog');
-  const holeTitle = document.getElementById('hole-modal-title');
-
-  function buildHoleModalSVG() {
-    const cog = getActiveCog();
-    holeTitle.textContent = 'Cog ' + cog.name + ' · choose a pen hole';
-    const maxRho = cog.type === 'round' ? 1 : COG_DEFS[cog.type].maxRho;
-    const half = (maxRho + 0.10).toFixed(2);
-    const sz = (parseFloat(half) * 2).toFixed(2);
-    let svg = '<svg viewBox="-' + half + ' -' + half + ' ' + sz + ' ' + sz + '" xmlns="http://www.w3.org/2000/svg">';
-    if (cog.type === 'round') {
-      svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
-    } else {
-      const def = COG_DEFS[cog.type];
-      let path = '';
-      const N = 240;
-      for (let i = 0; i <= N; i++) {
-        const u = (i / N) * 2 * Math.PI;
-        const p = def.eval(u);
-        path += (i === 0 ? 'M' : 'L') + p.x.toFixed(4) + ',' + p.y.toFixed(4);
-      }
-      path += 'Z';
-      svg += '<path d="' + path + '" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="' + (0.012 * maxRho).toFixed(4) + '"/>';
-    }
-    svg += '<circle cx="0" cy="0" r="' + (0.025 * maxRho).toFixed(4) + '" fill="rgba(255,255,255,0.7)"/>';
-    const visR = 0.038 * maxRho;
-    const hitR = 0.075 * maxRho;
-    cog.holes.forEach((h, i) => {
-      const rho = rhoOf(cog, h.ang);
-      const hx = (h.dist * rho * Math.cos(h.ang)).toFixed(4);
-      const hy = (h.dist * rho * Math.sin(h.ang)).toFixed(4);
-      const isActive = i === state.holeIdx;
-      const fill = isActive ? state.color : 'rgba(0,0,0,0.92)';
-      const stroke = isActive ? state.color : 'rgba(255,255,255,0.7)';
-      const sw = ((isActive ? 0.018 : 0.012) * maxRho).toFixed(4);
-      svg += '<g data-hole="' + i + '">';
-      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + visR.toFixed(4) + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
-      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + hitR.toFixed(4) + '" fill="rgba(0,0,0,0)" style="cursor:pointer"/>';
-      svg += '</g>';
-    });
-    svg += '</svg>';
-    holeCogEl.innerHTML = svg;
-    holeCogEl.querySelectorAll('g[data-hole]').forEach(g => {
-      const i = parseInt(g.getAttribute('data-hole'), 10);
-      g.addEventListener('click', () => {
-        if (i !== state.holeIdx) {
-          state.holeIdx = i;
-          breakSegment();
-          updateHoleLabel();
-        }
-        closeHolePicker();
-      });
-    });
-  }
-  function openHolePicker() {
-    buildHoleModalSVG();
-    holeModal.classList.add('open');
-  }
-  function closeHolePicker() {
-    holeModal.classList.remove('open');
-  }
-  document.getElementById('hole-modal-close').addEventListener('click', closeHolePicker);
-  holeModal.addEventListener('click', (e) => {
-    if (e.target === holeModal) closeHolePicker();
-  });
-
   // ---- Hint toast ----
   let hintTimer = null;
   function showHint(text, ms) {
@@ -1499,12 +1385,9 @@
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
   // ---- Boot ----
+  syncNavBtns();
   resize();
-  {
-    const s0 = stateAt(state.t);
-    lastPen = { x: s0.px, y: s0.py };
-  }
-  showHint('Drag to rotate · Tap a shape to pick a hole', 2600);
+  showHint('Drag to rotate · Open menu to adjust settings', 2600);
   requestAnimationFrame(frame);
 })();
 </script>
