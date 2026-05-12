@@ -185,12 +185,38 @@
   }
   #hint.show { opacity: 1; }
 
-  /* Pen position sub-label */
-  .sub-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
-    color: #888; font-weight: 600; margin-bottom: 6px; margin-top: 12px;
+  /* Drawer tabs */
+  .drawer-tabs {
+    display: flex; margin: 0 -20px 18px; border-bottom: 1.5px solid #e0e0e0;
   }
-  body.dark .sub-label { color: #999; }
+  body.dark .drawer-tabs { border-bottom-color: #333; }
+  .dtab {
+    flex: 1; padding: 10px 2px; text-align: center;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+    color: #aaa; cursor: pointer; user-select: none;
+    border-bottom: 2.5px solid transparent; margin-bottom: -1.5px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  body.dark .dtab { color: #555; }
+  .dtab.active { color: #222; border-bottom-color: #222; }
+  body.dark .dtab.active { color: #f0f0f0; border-bottom-color: #f0f0f0; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; padding-top: 4px; }
+
+  /* No-color swatch */
+  .color.no-color { background: #111 !important; position: relative; overflow: hidden; }
+  .color.no-color::before, .color.no-color::after {
+    content: ''; position: absolute; width: 65%; height: 2.5px;
+    background: #e33; top: 50%; left: 17.5%; border-radius: 1px;
+  }
+  .color.no-color::before { transform: translateY(-50%) rotate(45deg); }
+  .color.no-color::after  { transform: translateY(-50%) rotate(-45deg); }
+
+  /* Pen position preview */
+  #pen-preview {
+    display: flex; justify-content: center; margin: 12px 0 4px;
+  }
+  #pen-preview svg { border-radius: 10px; }
 </style>
 </head>
 <body>
@@ -230,67 +256,91 @@
   <div id="drawer">
     <div class="drawer-title">Mandaloop</div>
 
-    <div class="section">
-      <h3>Cog</h3>
-      <div class="row" id="shape-btns"></div>
-      <div class="slider-wrap" style="margin-top:14px">
-        <input type="range" id="cog-size" min="0" max="80" step="1" value="35">
-        <span class="val" id="cog-size-val">45%</span>
+    <div class="drawer-tabs">
+      <div class="dtab active" data-tab="pen">Pen</div>
+      <div class="dtab" data-tab="cog">Cog</div>
+      <div class="dtab" data-tab="ring">Ring</div>
+      <div class="dtab" data-tab="system">Options</div>
+    </div>
+
+    <!-- Pen panel -->
+    <div class="tab-panel active" id="tab-pen">
+      <div class="section">
+        <h3>Ink Color</h3>
+        <div class="colors" id="colors"></div>
       </div>
-      <div class="sub-label">Pen Position</div>
-      <div class="slider-wrap">
-        <input type="range" id="pen-pos" min="0" max="90" step="1" value="50">
-        <span class="val" id="pen-pos-val">50%</span>
+      <div class="section">
+        <h3>Pen Width</h3>
+        <div class="slider-wrap">
+          <input type="range" id="pen-width" min="0.5" max="8" step="0.5" value="2">
+          <span class="val" id="pen-width-val">2</span>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <h3>Ink Color</h3>
-      <div class="colors" id="colors"></div>
-      <div class="sub-label">Pen Width</div>
-      <div class="slider-wrap">
-        <input type="range" id="pen-width" min="0.5" max="8" step="0.5" value="2">
-        <span class="val" id="pen-width-val">2</span>
+    <!-- Cog panel -->
+    <div class="tab-panel" id="tab-cog">
+      <div class="section">
+        <h3>Shape</h3>
+        <div class="row" id="shape-btns"></div>
+      </div>
+      <div class="section">
+        <h3>Size</h3>
+        <div class="slider-wrap">
+          <input type="range" id="cog-size" min="0" max="80" step="1" value="35">
+          <span class="val" id="cog-size-val">45%</span>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Pen Position</h3>
+        <div class="slider-wrap">
+          <input type="range" id="pen-pos" min="0" max="90" step="1" value="50">
+          <span class="val" id="pen-pos-val">50%</span>
+        </div>
+        <div id="pen-preview"></div>
       </div>
     </div>
 
-    <div class="section">
-      <h3>Fixed Piece</h3>
-      <div class="row">
-        <div class="chip active" data-fixed="ring">Ring (draw inside)</div>
-        <div class="chip" data-fixed="circle">Circle (draw outside)</div>
+    <!-- Ring panel -->
+    <div class="tab-panel" id="tab-ring">
+      <div class="section">
+        <h3>Fixed Piece</h3>
+        <div class="row">
+          <div class="chip active" data-fixed="ring">Ring (draw inside)</div>
+          <div class="chip" data-fixed="circle">Circle (draw outside)</div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Circumference</h3>
+        <div class="slider-wrap">
+          <input type="range" id="size" min="20" max="100" value="100">
+          <span class="val" id="size-val">75%</span>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <h3>Circumference</h3>
-      <div class="slider-wrap">
-        <input type="range" id="size" min="20" max="100" value="75">
-        <span class="val" id="size-val">75%</span>
+    <!-- System panel -->
+    <div class="tab-panel" id="tab-system">
+      <div class="section">
+        <h3>Auto-Rotation Speed</h3>
+        <div class="slider-wrap">
+          <input type="range" id="speed" min="1" max="20" value="6">
+          <span class="val" id="speed-val">6</span>
+        </div>
+        <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Tap the lock (top-right) to move the ring.</p>
       </div>
-    </div>
-
-    <div class="section">
-      <h3>Auto-Rotation Speed</h3>
-      <div class="slider-wrap">
-        <input type="range" id="speed" min="1" max="20" value="6">
-        <span class="val" id="speed-val">6</span>
+      <div class="section">
+        <h3>Background</h3>
+        <div class="row">
+          <div class="chip" data-bg="white">White</div>
+          <div class="chip active" data-bg="black">Black</div>
+        </div>
       </div>
-      <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Tap the lock (top-right) to move the ring.</p>
-    </div>
-
-    <div class="section">
-      <h3>Background</h3>
-      <div class="row">
-        <div class="chip" data-bg="white">White</div>
-        <div class="chip active" data-bg="black">Black</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="actions">
-        <button class="btn" id="clear">Clear</button>
-        <button class="btn primary" id="save">Save PNG</button>
+      <div class="section">
+        <div class="actions">
+          <button class="btn" id="clear">Clear</button>
+          <button class="btn primary" id="save">Save PNG</button>
+        </div>
       </div>
     </div>
   </div>
@@ -327,12 +377,12 @@
     { hex: '#9c27b0', name: 'Violet' },         // original vivid violet
     { hex: '#C0448F', name: 'Red-Violet' },
     { hex: '#F75394', name: 'Violet-Red' },
-    { hex: '#FFAACC', name: 'Carnation Pink' },
     { hex: '#FDD5B1', name: 'Apricot' },
     { hex: '#AF593E', name: 'Brown' },
     { hex: '#8B8680', name: 'Gray' },
     { hex: '#000000', name: 'Black' },
     { hex: '#FFFFFF', name: 'White' },
+    { hex: null,      name: 'No Color' },
   ];
 
   const ROUND_MIN_PERCENT = 10;
@@ -745,8 +795,8 @@
     sizeStep: 35,       // 0–80 → 10%–90%; default 45%
     penPos: 0.50,       // pen position: 0.0 (center) to 0.90 (near edge)
     penWidth: 2,        // stroke width in CSS pixels
-    sizeFrac: 0.75,
-    color: COLORS[11].hex,  // Blue
+    sizeFrac: 1.0,
+    color: COLORS[0].hex,   // Red
     bg: 'black',
     speed: 6,
     paused: true,
@@ -850,6 +900,7 @@
     for (let si = 0; si <= currentIdx; si++) {
       const seg = segments[si];
       if (seg.points.length < 2) continue;
+      if (seg.state.color === null) continue; // no-color segment — invisible
       trailCtx.strokeStyle = seg.state.color;
       trailCtx.lineWidth = seg.state.penWidth;
       trailCtx.beginPath();
@@ -859,6 +910,53 @@
       }
       trailCtx.stroke();
     }
+  }
+
+  // ---- Pen position preview (inline SVG — no canvas layout issues) ----
+  function drawPenPreview() {
+    const el = document.getElementById('pen-preview');
+    if (!el) return;
+
+    const S    = 160;
+    const half = S / 2;
+    const cogR = half * 0.72;
+    const cog  = getActiveCog();
+
+    const isDark  = state.bg === 'black';
+    const strokeC = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)';
+    const fillC   = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
+    const bgC     = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+
+    // Cog shape path
+    let shapeSVG;
+    if (cog.type === 'round') {
+      shapeSVG = `<circle cx="${half}" cy="${half}" r="${cogR}" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/>`;
+    } else {
+      const tab    = COG_TABLES[cog.type];
+      const maxRho = COG_DEFS[cog.type].maxRho;
+      const sc     = cogR / maxRho;
+      let d = '';
+      for (let i = 0; i <= tab.samples; i++) {
+        const x = (half + tab.x[i] * sc).toFixed(2);
+        const y = (half + tab.y[i] * sc).toFixed(2);
+        d += i === 0 ? `M${x},${y}` : `L${x},${y}`;
+      }
+      d += 'Z';
+      shapeSVG = `<path d="${d}" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5" stroke-linejoin="round"/>`;
+    }
+
+    // Pen dot position (along body-frame x-axis)
+    const px = (half + state.penPos * cogR).toFixed(2);
+    const py = half;
+    const dotColor = state.color || (isDark ? '#888' : '#aaa');
+
+    el.innerHTML = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" style="display:block">
+      <circle cx="${half}" cy="${half}" r="${half - 6}" fill="${bgC}"/>
+      ${shapeSVG}
+      <line x1="${half}" y1="${half}" x2="${px}" y2="${py}" stroke="${strokeC}" stroke-width="1.2"/>
+      <circle cx="${half}" cy="${half}" r="2.5" fill="${strokeC}"/>
+      <circle cx="${px}" cy="${py}" r="6" fill="${dotColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.5"/>
+    </svg>`;
   }
 
   function drawFixedCircle(R) {
@@ -926,7 +1024,7 @@
     gearCtx.fillStyle = accent;
     gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
     gearCtx.beginPath(); gearCtx.moveTo(s.gx, s.gy); gearCtx.lineTo(s.px, s.py); gearCtx.stroke();
-    gearCtx.fillStyle = state.color;
+    gearCtx.fillStyle = state.color || (state.bg === 'white' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)');
     gearCtx.beginPath(); gearCtx.arc(s.px, s.py, 4.5, 0, Math.PI*2); gearCtx.fill();
     gearCtx.lineWidth = 1.5;
     gearCtx.strokeStyle = state.bg === 'white' ? '#fff' : '#000';
@@ -955,10 +1053,13 @@
     if (deltaT === 0) return;
     const subdivs = Math.max(1, Math.ceil(Math.abs(deltaT) * 80));
     const dt = deltaT / subdivs;
-    trailCtx.lineCap = 'round';
-    trailCtx.lineJoin = 'round';
-    trailCtx.lineWidth = state.penWidth;
-    trailCtx.strokeStyle = state.color;
+    const drawing = state.color !== null;
+    if (drawing) {
+      trailCtx.lineCap = 'round';
+      trailCtx.lineJoin = 'round';
+      trailCtx.lineWidth = state.penWidth;
+      trailCtx.strokeStyle = state.color;
+    }
     for (let i = 0; i < subdivs; i++) {
       state.t += dt;
       const s = stateAt(state.t);
@@ -968,12 +1069,14 @@
         segments.push({ points: [{ x: s.px, y: s.py }], state: captureState() });
         currentIdx = segments.length - 1;
       } else {
-        trailCtx.beginPath();
-        trailCtx.moveTo(lastPen.x, lastPen.y);
-        trailCtx.lineTo(s.px, s.py);
-        trailCtx.stroke();
+        if (drawing) {
+          trailCtx.beginPath();
+          trailCtx.moveTo(lastPen.x, lastPen.y);
+          trailCtx.lineTo(s.px, s.py);
+          trailCtx.stroke();
+        }
         segments[currentIdx].points.push({ x: s.px, y: s.py });
-        segments[currentIdx].state.t = state.t; // keep end-t current
+        segments[currentIdx].state.t = state.t;
       }
       lastPen = { x: s.px, y: s.py };
     }
@@ -1006,7 +1109,10 @@
   function syncAllUI() {
     // Color swatches
     document.querySelectorAll('#colors .color').forEach(el => {
-      el.classList.toggle('active', el.dataset.ink === state.color);
+      const matches = state.color === null
+        ? el.dataset.ink === 'none'
+        : el.dataset.ink === state.color;
+      el.classList.toggle('active', matches);
     });
     // Shape buttons
     document.querySelectorAll('#shape-btns .chip').forEach((el, i) => {
@@ -1024,6 +1130,7 @@
     const pwSl = document.getElementById('pen-width');
     const pwVal = document.getElementById('pen-width-val');
     if (pwSl) { pwSl.value = state.penWidth; pwVal.textContent = state.penWidth; }
+    drawPenPreview();
   }
 
   function navigateBack() {
@@ -1138,9 +1245,10 @@
   const colorsEl = document.getElementById('colors');
   COLORS.forEach(({ hex, name }) => {
     const el = document.createElement('div');
-    el.className = 'color' + (hex === state.color ? ' active' : '');
-    el.style.background = hex;
-    el.dataset.ink = hex;
+    const isNoColor = hex === null;
+    el.className = 'color' + (isNoColor ? ' no-color' : '') + (hex === state.color ? ' active' : '');
+    if (!isNoColor) el.style.background = hex;
+    el.dataset.ink = isNoColor ? 'none' : hex;
     el.title = name;
     el.setAttribute('aria-label', name);
     el.addEventListener('click', () => {
@@ -1148,6 +1256,7 @@
       breakSegment();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
+      drawPenPreview();
     });
     colorsEl.appendChild(el);
   });
@@ -1176,6 +1285,7 @@
         state.t = 0;
         breakSegment();
         updateShapeUI();
+        drawPenPreview();
       }
     });
     shapeBtnsEl.appendChild(el);
@@ -1197,6 +1307,7 @@
     state.t = 0;
     breakSegment();
     updateSizeLabel();
+    drawPenPreview();
   });
   updateSizeLabel();
 
@@ -1210,6 +1321,7 @@
     state.penPos = parseInt(penPosSlider.value, 10) / 100;
     penPosValEl.textContent = penPosSlider.value + '%';
     breakSegment();
+    drawPenPreview();
   });
 
   // ---- UI: Pen width slider ----
@@ -1357,6 +1469,18 @@
   });
   updateLockUI();
 
+  // ---- UI: Tabs ----
+  function switchTab(name) {
+    document.querySelectorAll('.dtab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.tab-panel').forEach(p =>
+      p.classList.toggle('active', p.id === 'tab-' + name));
+    if (name === 'cog') drawPenPreview();
+  }
+  document.querySelectorAll('.dtab').forEach(t => {
+    t.addEventListener('click', () => switchTab(t.dataset.tab));
+  });
+
   // ---- UI: Drawer ----
   const drawer = document.getElementById('drawer');
   const overlay = document.getElementById('overlay');
@@ -1364,6 +1488,8 @@
     pauseAutoDraw('Paused while drawer is open', 1500);
     drawer.classList.add('open');
     overlay.classList.add('open');
+    // Render preview in case cog tab is active
+    drawPenPreview();
   });
   overlay.addEventListener('click', () => {
     drawer.classList.remove('open');
