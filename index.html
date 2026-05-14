@@ -217,9 +217,41 @@
     display: flex; justify-content: center; margin: 12px 0 4px;
   }
   #pen-preview svg { border-radius: 10px; }
+
+  /* Splash screen */
+  #splash {
+    position: fixed; inset: 0; z-index: 100;
+    background: #000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    opacity: 1; transition: opacity 1s ease;
+    pointer-events: none;
+    gap: 0;
+  }
+  #splash img {
+    width: min(80vw, 75vh);
+    height: min(80vw, 75vh);
+    object-fit: contain;
+    display: block;
+  }
+  #splash .splash-name {
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: clamp(24px, 5.5vw, 52px);
+    font-weight: 400;
+    color: #FFD400;
+    letter-spacing: 10px;
+    text-indent: 10px;
+    margin-top: -6px;
+    text-shadow: 0 0 20px rgba(255,212,0,0.6), 0 0 60px rgba(255,212,0,0.25);
+  }
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400&display=swap" rel="stylesheet">
 </head>
 <body>
+  <div id="splash">
+    <img src="logo.png" alt="Mandaloop">
+    <div class="splash-name">MANDALOOP</div>
+  </div>
+
   <div id="canvas-wrap">
     <canvas id="trail"></canvas>
     <canvas id="gears"></canvas>
@@ -919,18 +951,30 @@
 
     const S    = 160;
     const half = S / 2;
-    const cogR = half * 0.72;
     const cog  = getActiveCog();
 
-    const isDark  = state.bg === 'black';
-    const strokeC = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)';
-    const fillC   = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
-    const bgC     = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+    // Ring fills most of the preview; cog scales proportionally with the size slider
+    const ringR = half * 0.88;
+    let cogR;
+    if (cog.type === 'round') {
+      const ratio = sizePercentFromStep(state.sizeStep) / 100;
+      cogR = ringR * ratio;
+    } else {
+      // Non-round: use the same interpolated scale factor as the real renderer
+      const scaleFrac = interpolatedNonRoundScale(cog.type, state.sizeStep);
+      cogR = ringR * scaleFrac;
+    }
+
+    const isDark      = state.bg === 'black';
+    const strokeC     = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)';
+    const fillC       = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
+    const bgC         = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+    const ringStrokeC = isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.22)';
 
     // Cog shape path
     let shapeSVG;
     if (cog.type === 'round') {
-      shapeSVG = `<circle cx="${half}" cy="${half}" r="${cogR}" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/>`;
+      shapeSVG = `<circle cx="${half}" cy="${half}" r="${cogR.toFixed(2)}" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/>`;
     } else {
       const tab    = COG_TABLES[cog.type];
       const maxRho = COG_DEFS[cog.type].maxRho;
@@ -945,13 +989,13 @@
       shapeSVG = `<path d="${d}" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5" stroke-linejoin="round"/>`;
     }
 
-    // Pen dot position (along body-frame x-axis)
+    // Pen dot sits at penPos fraction of cogR along the body-frame x-axis
     const px = (half + state.penPos * cogR).toFixed(2);
     const py = half;
     const dotColor = state.color || (isDark ? '#888' : '#aaa');
 
     el.innerHTML = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" style="display:block">
-      <circle cx="${half}" cy="${half}" r="${half - 6}" fill="${bgC}"/>
+      <circle cx="${half}" cy="${half}" r="${ringR.toFixed(2)}" fill="${bgC}" stroke="${ringStrokeC}" stroke-width="1" stroke-dasharray="4 3"/>
       ${shapeSVG}
       <line x1="${half}" y1="${half}" x2="${px}" y2="${py}" stroke="${strokeC}" stroke-width="1.2"/>
       <circle cx="${half}" cy="${half}" r="2.5" fill="${strokeC}"/>
@@ -1204,11 +1248,10 @@
         if (s.t         !== undefined) state.t         = s.t;
       }
 
-      // Restore lastPen to end of last visible segment
-      if (currentIdx >= 0 && segments[currentIdx]) {
-        const pts = segments[currentIdx].points;
-        if (pts && pts.length > 0) lastPen = pts[pts.length - 1];
-      }
+      // lastPen intentionally NOT restored — ring position isn't saved,
+      // so saved coordinates would be stale and cause a spurious line on first draw.
+      // step() will start a fresh segment from the current cog position.
+      lastPen = null;
 
       return segments.length > 0;
     } catch(e) { return false; }
@@ -1605,6 +1648,19 @@
     showHint('Drag to rotate · Open menu to adjust settings', 2600);
   }
   requestAnimationFrame(frame);
+
+  // ---- Splash screen ----
+  (function() {
+    const splash = document.getElementById('splash');
+    if (!splash) return;
+    // Show for 2 s, then fade over 1 s, then remove from DOM
+    setTimeout(function() {
+      splash.style.opacity = '0';
+      setTimeout(function() {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 1000);
+    }, 2000);
+  })();
 })();
 </script>
 </body>
