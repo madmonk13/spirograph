@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Spirograph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    touch-action: none; overscroll-behavior: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #222;
+  }
+  body { background: #fff; transition: background 0.25s, color 0.25s; }
+  body.dark { background: #000; color: #eee; }
+
+  #canvas-wrap { position: fixed; inset: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  /* Top buttons */
+  .top-btn {
+    position: fixed; top: max(16px, env(safe-area-inset-top)); z-index: 30;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.18);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #333;
+  }
+  body.dark .top-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
+  #menu-btn { left: 16px; }
+  #lock-btn { right: 16px; }
+  #menu-btn .bars { width: 22px; height: 16px; position: relative; }
+  #menu-btn .bars i { position: absolute; left: 0; right: 0; height: 2px; background: currentColor; border-radius: 1px; }
+  #menu-btn .bars i:nth-child(1) { top: 0; }
+  #menu-btn .bars i:nth-child(2) { top: 7px; }
+  #menu-btn .bars i:nth-child(3) { top: 14px; }
+  #lock-btn svg { width: 22px; height: 22px; }
+  #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #c8a700; }
+  body.dark #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #ffd400; }
+
+  /* Drawer */
+  #drawer {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 86%; max-width: 360px;
+    background: #fff;
+    transform: translateX(-102%); transition: transform 0.28s cubic-bezier(0.2,0.7,0.2,1);
+    z-index: 40; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+    padding: max(20px, env(safe-area-inset-top)) 20px 30px 20px;
+  }
+  body.dark #drawer { background: #161616; color: #eee; box-shadow: 4px 0 24px rgba(0,0,0,0.6); }
+  #drawer.open { transform: translateX(0); }
+
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    z-index: 35;
+  }
+  #overlay.open { opacity: 1; pointer-events: auto; }
+
+  .drawer-title { font-size: 18px; font-weight: 600; margin-bottom: 18px; }
+
+  .section { margin-bottom: 22px; }
+  .section h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+    color: #888; margin-bottom: 10px; font-weight: 600;
+  }
+  body.dark .section h3 { color: #999; }
+  .section .note { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.4; }
+  body.dark .section .note { color: #999; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  #shape-btns {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .chip {
+    padding: 9px 14px; border-radius: 22px; border: 1px solid #ddd;
+    background: #fff; color: #333; cursor: pointer; font-size: 13px;
+    transition: all 0.15s; user-select: none;
+    display: flex; align-items: center; gap: 5px;
+  }
+  #shape-btns .chip {
+    width: 46px; height: 46px; padding: 0; border-radius: 14px;
+    justify-content: center; flex: 0 0 auto;
+  }
+  #shape-btns .chip svg {
+    width: 22px; height: 22px;
+  }
+  body.dark .chip { background: #232323; color: #eee; border-color: #3a3a3a; }
+  .chip.active { background: #222; color: #fff; border-color: #222; }
+  body.dark .chip.active { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+
+  .colors { display: grid; grid-template-columns: repeat(9, 1fr); gap: 8px; }
+  .color {
+    aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+  }
+  .color[data-ink="#ffffff"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.28); }
+  body.dark .color[data-ink="#000000"] { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28); }
+  .color.active { border-color: #222; transform: scale(1.08); }
+  body.dark .color.active { border-color: #fff; }
+
+  .slider-wrap { display: flex; align-items: center; gap: 12px; }
+  .slider-wrap input[type=range] { flex: 1; min-width: 0; }
+  .slider-wrap .val {
+    font-size: 13px; min-width: 42px; text-align: right;
+    color: #666; font-variant-numeric: tabular-nums;
+  }
+  body.dark .slider-wrap .val { color: #aaa; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 22px; background: transparent; outline: none;
+    display: block;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px; background: #e0e0e0; border-radius: 2px;
+  }
+  body.dark input[type=range]::-webkit-slider-runnable-track { background: #3a3a3a; }
+  input[type=range]::-moz-range-track {
+    height: 4px; background: #e0e0e0; border-radius: 2px; border: none;
+  }
+  body.dark input[type=range]::-moz-range-track { background: #3a3a3a; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px; border-radius: 50%; background: #222;
+    cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    margin-top: -9px; /* center thumb on 4px track: -(22-4)/2 */
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; background: #222;
+    cursor: pointer; border: none;
+  }
+  body.dark input[type=range]::-webkit-slider-thumb { background: #f0f0f0; }
+  body.dark input[type=range]::-moz-range-thumb { background: #f0f0f0; }
+
+  .actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn {
+    flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd;
+    background: #fff; color: #333; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  body.dark .btn { background: #232323; color: #eee; border-color: #3a3a3a; }
+  .btn.primary { background: #222; color: #fff; border-color: #222; }
+  body.dark .btn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+  .btn:active { transform: scale(0.98); }
+
+  /* Hole row */
+  .hole-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .hole-row .note { margin: 0; }
+  .hole-row .btn { flex: none; padding: 7px 13px; font-size: 13px; }
+
+  /* Bottom-right floating controls */
+  .float-controls {
+    position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); right: 16px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 25;
+  }
+  .fbtn {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.18);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #333;
+  }
+  .fbtn.small { width: 44px; height: 44px; }
+  body.dark .fbtn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
+  .fbtn svg { width: 22px; height: 22px; }
+  .fbtn.primary { background: #222; color: #fff; border-color: #222; }
+  body.dark .fbtn.primary { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
+
+  /* Hint toast */
+  #hint {
+    position: fixed; bottom: max(28px, env(safe-area-inset-bottom)); left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.78); color: #fff;
+    padding: 9px 16px; border-radius: 22px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    z-index: 5; white-space: nowrap;
+  }
+  #hint.show { opacity: 1; }
+
+  /* Hole picker modal */
+  #hole-modal {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(0,0,0,0.92);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #hole-modal.open { display: flex; }
+  #hole-modal .hole-cog {
+    width: 88vmin; height: 88vmin;
+    max-width: 540px; max-height: 540px;
+    color: #f0f0f0;
+  }
+  #hole-modal .hole-cog svg { width: 100%; height: 100%; display: block; }
+  #hole-modal .hole-modal-title {
+    position: absolute; top: max(20px, env(safe-area-inset-top)); left: 0; right: 0;
+    text-align: center; color: #ccc; font-size: 13px; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  #hole-modal-close {
+    position: absolute; top: max(16px, env(safe-area-inset-top)); right: 16px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    color: #f0f0f0; cursor: pointer;
+  }
+  #hole-modal-close svg { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+  <div id="canvas-wrap">
+    <canvas id="trail"></canvas>
+    <canvas id="gears"></canvas>
+  </div>
+
+  <button id="menu-btn" class="top-btn" aria-label="Menu"><div class="bars"><i></i><i></i><i></i></div></button>
+  <button id="lock-btn" class="top-btn" aria-label="Lock / Unlock ring">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="lock-icon">
+      <rect x="4.5" y="11" width="15" height="10" rx="2"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+    </svg>
+  </button>
+
+  <div class="float-controls">
+    <button class="fbtn primary" id="fb-pause" aria-label="Play / Pause" title="Play / Pause">
+      <svg viewBox="0 0 24 24" fill="currentColor" id="pause-icon"><polygon points="7,4 20,12 7,20" /></svg>
+    </button>
+    <button class="fbtn small" id="fb-clear" aria-label="Clear" title="Clear">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+    </button>
+  </div>
+
+  <div id="overlay"></div>
+
+  <div id="drawer">
+    <div class="drawer-title">Spirograph</div>
+
+    <div class="section">
+      <h3>Cog</h3>
+      <div class="row" id="shape-btns"></div>
+      <div class="slider-wrap" style="margin-top:14px">
+        <input type="range" id="cog-size" min="0" max="80" step="1" value="40">
+        <span class="val" id="cog-size-val">50%</span>
+      </div>
+      <div class="hole-row">
+        <span class="note" id="hole-label">Hole 4</span>
+        <button class="btn" id="pick-hole-btn">Pick hole</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Ink Color</h3>
+      <div class="colors" id="colors"></div>
+    </div>
+
+    <div class="section">
+      <h3>Fixed Piece</h3>
+      <div class="row">
+        <div class="chip active" data-fixed="ring">Ring (draw inside)</div>
+        <div class="chip" data-fixed="circle">Circle (draw outside)</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Circumference</h3>
+      <div class="slider-wrap">
+        <input type="range" id="size" min="20" max="100" value="75">
+        <span class="val" id="size-val">75%</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Auto-Rotation Speed</h3>
+      <div class="slider-wrap">
+        <input type="range" id="speed" min="1" max="20" value="6">
+        <span class="val" id="speed-val">6</span>
+      </div>
+      <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Tap the lock (top-right) to move the ring.</p>
+    </div>
+
+    <div class="section">
+      <h3>Background</h3>
+      <div class="row">
+        <div class="chip" data-bg="white">White</div>
+        <div class="chip active" data-bg="black">Black</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="actions">
+        <button class="btn" id="clear">Clear</button>
+        <button class="btn primary" id="save">Save PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="hint">Drag on the canvas to rotate</div>
+
+  <div id="hole-modal">
+    <div class="hole-modal-title" id="hole-modal-title">Choose a pen hole</div>
+    <button id="hole-modal-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5l-14 14"/></svg>
+    </button>
+    <div class="hole-cog" id="hole-cog"></div>
+  </div>
+
+<script>
+(function(){
+  const trailCv = document.getElementById('trail');
+  const gearCv  = document.getElementById('gears');
+  const trailCtx = trailCv.getContext('2d');
+  const gearCtx  = gearCv.getContext('2d');
+
+  let W = 0, H = 0, cx = 0, cy = 0;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  // ROYGBIV
+  const COLORS = ['#ff1f1f','#ff8a00','#ffd400','#1fc24a','#1f7dff','#4b1f9c','#9c27b0','#000000','#ffffff'];
+
+  const ROUND_MIN_PERCENT = 10;
+  const ROUND_MAX_PERCENT = 90;
+  const ROUND_STEP_COUNT = ROUND_MAX_PERCENT - ROUND_MIN_PERCENT + 1;
+
+  // Specialty shapes; round cogs are generated dynamically for any whole
+  // number percentage between 10% and 90%.
+  const COGS = [
+    { type: 'plus',      name: 'Square',    scale: 0.22, fixedBodyFrac: 0.165, nHoles: 12 },
+    { type: 'triangle',  name: 'Triangle',  scale: 0.25, fixedBodyFrac: 0.175, nHoles: 9  },
+    { type: 'rectangle', name: 'Oval',      scale: 0.17, fixedBodyFrac: 0.140, nHoles: 11 },
+    { type: 'hexagon',   name: 'Hexagon',   scale: 0.26, nHoles: 13 },
+    { type: 'pentagon',  name: 'Pentagon',  scale: 0.24, nHoles: 15 },
+  ];
+
+  // Body-frame definitions of non-circular cogs (unit scale; CCW traversal).
+  const COG_DEFS = {
+    plus: (function() {
+      // Smooth convex 4-fold support curve rotated so the "corners" land on
+      // the diagonals, matching the square gear while eliminating corner-tip
+      // rocking in the rolling solver.
+      const a = 0.05;
+      const phi0 = Math.PI / 4;
+      function h(theta) {
+        return 1 + a * Math.cos(4 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -4 * a * Math.sin(4 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -16 * a * Math.cos(4 * (theta - phi0));
+      }
+      let maxRho = 0;
+      for (let i = 0; i < 1440; i++) {
+        const theta = (i / 1440) * 2 * Math.PI;
+        const hv = h(theta), h1 = hp(theta);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const x = hv * c - h1 * s;
+        const y = hv * s + h1 * c;
+        maxRho = Math.max(maxRho, Math.hypot(x, y));
+      }
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+    triangle: {
+      // 3-fold, same amplitude as square so rolling stays smooth
+      _a: 0.05,
+      maxRho: 1.05,
+      rho: function(theta) { return 1 + this._a * Math.cos(3 * theta); },
+      eval: function(u) {
+        const a = this._a;
+        const c = Math.cos(u),  s = Math.sin(u);
+        const c3 = Math.cos(3*u), s3 = Math.sin(3*u);
+        const rho  = 1 + a * c3;
+        const rhoP = -3 * a * s3;
+        return { x: rho*c, y: rho*s, dx: rhoP*c - rho*s, dy: rhoP*s + rho*c };
+      },
+    },
+    rectangle: (function() {
+      // Smooth convex rectangular support curve. A stronger 2-fold term sets
+      // the aspect ratio, while a small negative 4-fold term flattens the
+      // long sides so it reads as a rounded rectangle rather than an oval.
+      const a2 = 0.26;
+      const a4 = -0.015;
+      function h(theta) {
+        return 1 + a2 * Math.cos(2 * theta) + a4 * Math.cos(4 * theta);
+      }
+      function hp(theta) {
+        return -2 * a2 * Math.sin(2 * theta) - 4 * a4 * Math.sin(4 * theta);
+      }
+      function hpp(theta) {
+        return -4 * a2 * Math.cos(2 * theta) - 16 * a4 * Math.cos(4 * theta);
+      }
+      let maxRho = 0;
+      for (let i = 0; i < 1440; i++) {
+        const theta = (i / 1440) * 2 * Math.PI;
+        const hv = h(theta), h1 = hp(theta);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const x = hv * c - h1 * s;
+        const y = hv * s + h1 * c;
+        maxRho = Math.max(maxRho, Math.hypot(x, y));
+      }
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+    hexagon: (function() {
+      // Smooth convex 6-fold support curve. This keeps the hexagonal read
+      // while avoiding the corner-tipping behavior from hard-sided polygons.
+      const a = 0.022;
+      const phi0 = Math.PI / 2;
+      function h(theta) {
+        return 1 + a * Math.cos(6 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -6 * a * Math.sin(6 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -36 * a * Math.cos(6 * (theta - phi0));
+      }
+      const maxRho = h(phi0);
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+    pentagon: (function() {
+      // Smooth convex 5-fold support curve. This preserves a pentagon-like
+      // silhouette while removing the flat-side/corner transitions that make
+      // the cog visibly tip and rock in the rolling solver.
+      const a = 0.032;
+      const phi0 = Math.PI / 2;
+      function h(theta) {
+        return 1 + a * Math.cos(5 * (theta - phi0));
+      }
+      function hp(theta) {
+        return -5 * a * Math.sin(5 * (theta - phi0));
+      }
+      function hpp(theta) {
+        return -25 * a * Math.cos(5 * (theta - phi0));
+      }
+      const maxRho = h(phi0);
+      return {
+        maxRho,
+        rho: function(theta) {
+          const hv = h(theta), h1 = hp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          const x = hv * c - h1 * s;
+          const y = hv * s + h1 * c;
+          return Math.hypot(x, y);
+        },
+        eval: function(u) {
+          const theta = u;
+          const hv = h(theta), h1 = hp(theta), curv = hv + hpp(theta);
+          const c = Math.cos(theta), s = Math.sin(theta);
+          return {
+            x: hv * c - h1 * s,
+            y: hv * s + h1 * c,
+            dx: -curv * s,
+            dy:  curv * c,
+          };
+        }
+      };
+    }()),
+  };
+
+  // Precompute arc-length / tangent-angle tables for non-round cogs.
+  function buildCogTable(def, samples = 2048) {
+    const tab = {
+      u:     new Float32Array(samples + 1),
+      x:     new Float32Array(samples + 1),
+      y:     new Float32Array(samples + 1),
+      s:     new Float32Array(samples + 1),
+      alpha: new Float32Array(samples + 1),
+    };
+    let cum = 0, prevX = 0, prevY = 0;
+    let prevAlpha = null, alphaUnwrap = 0;
+    for (let i = 0; i <= samples; i++) {
+      const u = (i / samples) * 2 * Math.PI;
+      const p = def.eval(u);
+      if (i > 0) {
+        const ddx = p.x - prevX, ddy = p.y - prevY;
+        cum += Math.sqrt(ddx*ddx + ddy*ddy);
+      }
+      let alpha = Math.atan2(p.dy, p.dx);
+      if (prevAlpha !== null) {
+        const diff = alpha - prevAlpha;
+        if (diff >  Math.PI) alphaUnwrap -= 2 * Math.PI;
+        if (diff < -Math.PI) alphaUnwrap += 2 * Math.PI;
+      }
+      prevAlpha = alpha;
+      tab.u[i] = u;
+      tab.x[i] = p.x; tab.y[i] = p.y;
+      tab.s[i] = cum;
+      tab.alpha[i] = alpha + alphaUnwrap;
+      prevX = p.x; prevY = p.y;
+    }
+    tab.samples = samples;
+    tab.perimeter = cum;
+    tab.alpha0 = tab.alpha[0];
+    tab.evalByS = def.evalByS || null;
+    return tab;
+  }
+  const COG_TABLES = {
+    plus:      buildCogTable(COG_DEFS.plus),
+    triangle:  buildCogTable(COG_DEFS.triangle),
+    rectangle: buildCogTable(COG_DEFS.rectangle),
+    hexagon:   buildCogTable(COG_DEFS.hexagon),
+    pentagon:  buildCogTable(COG_DEFS.pentagon, 4096),
+  };
+  function lookupByS(tab, sTarget) {
+    const N = tab.samples;
+    let lo = 0, hi = N;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (tab.s[mid] <= sTarget) lo = mid; else hi = mid;
+    }
+    const span = (tab.s[hi] - tab.s[lo]) || 1;
+    const f = (sTarget - tab.s[lo]) / span;
+    return {
+      x:     tab.x[lo]     * (1-f) + tab.x[hi]     * f,
+      y:     tab.y[lo]     * (1-f) + tab.y[hi]     * f,
+      alpha: tab.alpha[lo] * (1-f) + tab.alpha[hi] * f,
+    };
+  }
+
+  function distributeRing(holes, count, dist, startAng) {
+    for (let i = 0; i < count; i++) {
+      holes.push({ dist, ang: startAng + (i / count) * 2 * Math.PI });
+    }
+  }
+
+  function buildRoundHoles(n) {
+    const holes = [];
+    if (n <= 0) return holes;
+    holes.push({ dist: 0.14, ang: 0 });
+    if (n === 1) return holes;
+    // For round cogs, angle alone only rotates the same resulting curve, so
+    // maximize variation by giving every available hole a unique radius.
+    // Keep the visual feel of the classic picker by laying those unique radii
+    // out along a gentle spiral instead of stacked concentric rings.
+    const remaining = n - 1;
+    const minR = 0.24;
+    const maxR = 0.86;
+    const turns = 1.25 + remaining * 0.11;
+    for (let i = 0; i < remaining; i++) {
+      const t = remaining === 1 ? 1 : i / (remaining - 1);
+      const dist = minR + (maxR - minR) * t;
+      const ang = Math.PI / 5 + t * turns * 2 * Math.PI;
+      holes.push({ dist, ang });
+    }
+    return holes;
+  }
+
+  function buildTriangleHoles() {
+    return buildRadialVertexRuns(
+      [-Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6],
+      [
+        [0.16, 0.38, 0.60],
+        [0.23, 0.47, 0.73],
+        [0.30, 0.56, 0.84],
+      ]
+    );
+  }
+
+  function buildRectangleHoles() {
+    return buildRadialVertexRuns(
+      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
+      [
+        [0.18, 0.44],
+        [0.24, 0.54],
+        [0.31, 0.66],
+        [0.39, 0.80],
+      ],
+      [{ dist: 0.12, ang: 0 }, { dist: 0.70, ang: 0 }, { dist: 0.86, ang: Math.PI }]
+    );
+  }
+
+  function buildHexagonHoles() {
+    return buildRadialVertexRuns([
+      Math.PI / 2,
+      Math.PI / 2 + Math.PI / 3,
+      Math.PI / 2 + 2 * Math.PI / 3,
+      Math.PI / 2 + Math.PI,
+      Math.PI / 2 + 4 * Math.PI / 3,
+      Math.PI / 2 + 5 * Math.PI / 3,
+    ], [
+      [0.14, 0.38],
+      [0.18, 0.44],
+      [0.22, 0.50],
+      [0.26, 0.58],
+      [0.30, 0.66],
+      [0.34, 0.76],
+    ], [{ dist: 0.10, ang: 0 }]);
+  }
+  function buildPlusHoles() {
+    return buildRadialVertexRuns(
+      [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4],
+      [
+        [0.16, 0.34, 0.56],
+        [0.22, 0.42, 0.64],
+        [0.28, 0.50, 0.72],
+        [0.36, 0.60, 0.84],
+      ]
+    );
+  }
+  function buildPentagonHoles() {
+    return buildRadialVertexRuns([
+      Math.PI / 2,
+      Math.PI / 2 + 2 * Math.PI / 5,
+      Math.PI / 2 + 4 * Math.PI / 5,
+      Math.PI / 2 + 6 * Math.PI / 5,
+      Math.PI / 2 + 8 * Math.PI / 5,
+    ], [
+      [0.15, 0.34, 0.55],
+      [0.19, 0.40, 0.62],
+      [0.24, 0.46, 0.69],
+      [0.29, 0.52, 0.76],
+      [0.31, 0.58, 0.84],
+    ]);
+  }
+
+  function buildRadialVertexRuns(vertexAngles, perVertexDists, extras) {
+    const holes = [];
+    vertexAngles.forEach((baseAng, i) => {
+      const dists = perVertexDists[i] || [];
+      dists.forEach((dist) => {
+        holes.push({ dist, ang: baseAng });
+      });
+    });
+    if (extras && extras.length) holes.push(...extras);
+    return holes;
+  }
+
+  function rhoOf(cog, ang) {
+    return cog.type === 'round' ? 1 : COG_DEFS[cog.type].rho(ang);
+  }
+  COGS.forEach(c => {
+    if (c.type === 'round') c.holes = buildRoundHoles(c.nHoles);
+    else if (c.type === 'plus') c.holes = buildPlusHoles();
+    else if (c.type === 'triangle') c.holes = buildTriangleHoles();
+    else if (c.type === 'rectangle') c.holes = buildRectangleHoles();
+    else if (c.type === 'hexagon') c.holes = buildHexagonHoles();
+    else if (c.type === 'pentagon') c.holes = buildPentagonHoles();
+  });
+
+  // ---- Shape / size constants ----
+  const SHAPE_TYPES  = ['round', 'rectangle', 'triangle', 'plus', 'pentagon', 'hexagon'];
+  const SHAPE_LABELS = { round: 'Circle', rectangle: 'Oval', triangle: 'Triangle', plus: 'Square', pentagon: 'Pentagon', hexagon: 'Hexagon' };
+
+  // Anchor scales at 10%, 20%, ..., 90%. Intermediate whole-number
+  // percentages are interpolated from these anchors.
+  const NON_ROUND_SCALE_ANCHORS = {
+    plus:      [0.08, 0.11, 0.14, 0.18, 0.22, 0.26, 0.31, 0.37, 0.43],
+    triangle:  [0.10, 0.13, 0.17, 0.21, 0.26, 0.31, 0.37, 0.43, 0.50],
+    rectangle: [0.06, 0.08, 0.11, 0.14, 0.17, 0.21, 0.25, 0.30, 0.37],
+    hexagon:   [0.08, 0.11, 0.14, 0.18, 0.22, 0.27, 0.32, 0.38, 0.44],
+    pentagon:  [0.09, 0.12, 0.16, 0.20, 0.24, 0.29, 0.35, 0.41, 0.48],
+  };
+
+  function sizePercentFromStep(step) {
+    return ROUND_MIN_PERCENT + step;
+  }
+
+  function roundHoleCountForPercent(percent) {
+    return Math.round(6 + ((percent - ROUND_MIN_PERCENT) / (ROUND_MAX_PERCENT - ROUND_MIN_PERCENT)) * (34 - 6));
+  }
+
+  const ROUND_COG_CACHE = new Map();
+  function buildRoundCog(step) {
+    const percent = sizePercentFromStep(step);
+    let cog = ROUND_COG_CACHE.get(percent);
+    if (cog) return cog;
+    cog = {
+      type: 'round',
+      name: percent + '%',
+      ratio: percent / 100,
+      nHoles: roundHoleCountForPercent(percent),
+    };
+    cog.holes = buildRoundHoles(cog.nHoles);
+    ROUND_COG_CACHE.set(percent, cog);
+    return cog;
+  }
+
+  function interpolatedNonRoundScale(type, step) {
+    const anchors = NON_ROUND_SCALE_ANCHORS[type];
+    const pos = step / 10;
+    const lo = Math.floor(pos);
+    const hi = Math.min(anchors.length - 1, Math.ceil(pos));
+    if (lo === hi) return anchors[lo];
+    const t = pos - lo;
+    return anchors[lo] * (1 - t) + anchors[hi] * t;
+  }
+
+  // ---- Active-cog helper ----
+  function getActiveCog() {
+    if (state.shapeType === 'round') return buildRoundCog(state.sizeStep);
+    return COGS.find(c => c.type === state.shapeType);
+  }
+
+  function getNonRoundState(cog, fixed, t, R, RX, RY, scaleOverride) {
+    const tab = COG_TABLES[cog.type];
+    const scale = scaleOverride != null ? scaleOverride : cog.scale * R;
+    const sFix  = R * t;
+    const sCog = (fixed === 'circle') ? -sFix : sFix;
+    const sCogUnit = sCog / scale;
+    const L = tab.perimeter;
+    const cyc = Math.floor(sCogUnit / L);
+    const sResid = sCogUnit - cyc * L;
+    const evRaw = tab.evalByS ? tab.evalByS(sResid) : lookupByS(tab, sResid);
+    const ev = {
+      x: evRaw.x,
+      y: evRaw.y,
+      alpha: evRaw.alpha,
+    };
+    const alphaCog = ev.alpha + cyc * 2 * Math.PI;
+
+    const alphaFix = Math.PI / 2 + t;
+    const Fx = RX + R * Math.cos(t);
+    const Fy = RY + R * Math.sin(t);
+    const theta = (fixed === 'circle')
+      ? alphaFix - alphaCog + Math.PI
+      : alphaFix - alphaCog;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+    const Cbx = scale * ev.x, Cby = scale * ev.y;
+    const gx = Fx - (Cbx * cosT - Cby * sinT);
+    const gy = Fy - (Cbx * sinT + Cby * cosT);
+
+    return { gx, gy, theta, scale };
+  }
+
+  function measureInsideReach(cog, scale, tSamples = 1024) {
+    const tab = COG_TABLES[cog.type];
+    const turns = 8;
+    let maxDist = 0;
+    for (let ti = 0; ti <= tSamples; ti++) {
+      const t = (ti / tSamples) * (2 * Math.PI * turns);
+      const pose = getNonRoundState(cog, 'ring', t, 1, 0, 0, scale);
+      const cosT = Math.cos(pose.theta), sinT = Math.sin(pose.theta);
+      for (let i = 0; i <= tab.samples; i += 4) {
+        const xb = pose.scale * tab.x[i];
+        const yb = pose.scale * tab.y[i];
+        const x = pose.gx + xb * cosT - yb * sinT;
+        const y = pose.gy + xb * sinT + yb * cosT;
+        const dist = Math.hypot(x, y);
+        if (dist > maxDist) maxDist = dist;
+      }
+    }
+    return maxDist;
+  }
+
+  COGS.forEach(cog => {
+    if (cog.type !== 'round') {
+      cog.insideReach = measureInsideReach(cog, cog.scale);
+    }
+  });
+
+  function bodyScaleFor(cog, ringR) {
+    if (cog.type === 'round') return cog.ratio * ringR;
+    return interpolatedNonRoundScale(cog.type, state.sizeStep) * ringR;
+  }
+
+  const insideReachCache = new Map();
+  function measureInsideReachCached(cog, scale) {
+    const key = cog.type + ':' + scale.toFixed(5);
+    let val = insideReachCache.get(key);
+    if (val == null) {
+      val = measureInsideReach(cog, scale, 768);
+      insideReachCache.set(key, val);
+    }
+    return val;
+  }
+
+  const rollingRadiusCache = new Map();
+  function solveInsideRollingRadius(cog, ringR) {
+    const bodyScale = bodyScaleFor(cog, ringR);
+    const cacheKey = cog.type + ':' + ringR.toFixed(3) + ':' + bodyScale.toFixed(3);
+    let cached = rollingRadiusCache.get(cacheKey);
+    if (cached != null) return cached;
+
+    let lo = Math.max(bodyScale * 0.25, 1e-4);
+    let hi = ringR;
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      const outerReach = mid * measureInsideReachCached(cog, bodyScale / mid);
+      if (outerReach <= ringR * 0.99) lo = mid;  // 1% margin keeps cog snug while absorbing sampling gaps
+      else hi = mid;
+    }
+    rollingRadiusCache.set(cacheKey, lo);
+    return lo;
+  }
+
+  function rollingRadiusFor(cog, fixed, ringR) {
+    if (fixed === 'ring' && cog.type !== 'round') {
+      return solveInsideRollingRadius(cog, ringR);
+    }
+    return ringR;
+  }
+
+  // ---- State ----
+  const state = {
+    fixed: 'ring',
+    shapeType: 'round',
+    sizeStep: 35,          // 0–80 → 10%–90%; default 45%
+    holeIdx: 3,
+    sizeFrac: 0.75,
+    color: COLORS[4],
+    bg: 'black',
+    speed: 6,
+    paused: true,
+    locked: true,
+    ringX: 0, ringY: 0,
+    t: 0,
+  };
+  document.body.classList.add('dark');
+
+  const history = [];
+  let segId = 0;
+  let lastPen = null;
+
+  function ringCx() { return cx + state.ringX; }
+  function ringCy() { return cy + state.ringY; }
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cx = W / 2; cy = H / 2;
+    [trailCv, gearCv].forEach(cv => {
+      cv.width  = Math.floor(W * dpr);
+      cv.height = Math.floor(H * dpr);
+      cv.style.width  = W + 'px';
+      cv.style.height = H + 'px';
+      cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    redrawTrail();
+  }
+
+  function availableR() {
+    return Math.min(W, H) / 2 - 24;
+  }
+
+  function getR() {
+    const cog = getActiveCog();
+    const avail = availableR();
+    if (state.fixed !== 'circle') return avail * state.sizeFrac;
+    if (cog.type === 'round') {
+      return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
+    }
+    // Non-round rolls outside: total outer extent ≈ R*(1 + 2*step*maxRho).
+    const stepFrac = interpolatedNonRoundScale(cog.type, state.sizeStep);
+    const maxRho   = COG_DEFS[cog.type].maxRho;
+    return (avail / (1 + 2 * stepFrac * maxRho)) * state.sizeFrac;
+  }
+
+  function stateAt(t) {
+    const cog = getActiveCog();
+    const ringR = getR();
+    const R = rollingRadiusFor(cog, state.fixed, ringR);
+    const RX = ringCx(), RY = ringCy();
+    const hole = cog.holes[state.holeIdx];
+
+    if (cog.type === 'round') {
+      const r = R * cog.ratio;
+      const hx = hole.dist * r * Math.cos(hole.ang);
+      const hy = hole.dist * r * Math.sin(hole.ang);
+      let gx, gy, px, py, theta;
+      if (state.fixed === 'circle') {
+        gx = RX + (R + r) * Math.cos(t);
+        gy = RY + (R + r) * Math.sin(t);
+        const k = (R + r) / r;
+        theta = k * t + Math.PI;
+        const c = -Math.cos(k * t), s = -Math.sin(k * t);
+        px = gx + hx * c - hy * s;
+        py = gy + hx * s + hy * c;
+      } else {
+        gx = RX + (R - r) * Math.cos(t);
+        gy = RY + (R - r) * Math.sin(t);
+        const k = (R - r) / r;
+        theta = -k * t;
+        const c = Math.cos(-k * t), s = Math.sin(-k * t);
+        px = gx + hx * c - hy * s;
+        py = gy + hx * s + hy * c;
+      }
+      return { gx, gy, px, py, R, r, theta, cog };
+    }
+
+    const def   = COG_DEFS[cog.type];
+    // Use ringR (not the smaller rolling radius R) so the body scale matches what
+    // solveInsideRollingRadius used when computing R.
+    const scale = bodyScaleFor(cog, ringR);
+    const pose = getNonRoundState(cog, state.fixed, t, R, RX, RY, scale);
+    const gx = pose.gx, gy = pose.gy, theta = pose.theta;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+    const rho = def.rho(hole.ang);
+    const hbx = hole.dist * rho * scale * Math.cos(hole.ang);
+    const hby = hole.dist * rho * scale * Math.sin(hole.ang);
+    const px = gx + hbx * cosT - hby * sinT;
+    const py = gy + hbx * sinT + hby * cosT;
+
+    return { gx, gy, px, py, R: ringR, rollR: R, r: scale, scale, theta, cog };
+  }
+
+  function redrawTrail() {
+    trailCtx.clearRect(0, 0, W, H);
+    if (history.length < 2) return;
+    trailCtx.lineCap = 'round';
+    trailCtx.lineJoin = 'round';
+    trailCtx.lineWidth = 1.8;
+    let started = false, lastSeg = -1, lastColor = null;
+    for (let i = 0; i < history.length; i++) {
+      const p = history[i];
+      const newPath = !started || p.seg !== lastSeg || p.color !== lastColor;
+      if (newPath) {
+        if (started) trailCtx.stroke();
+        trailCtx.beginPath();
+        trailCtx.strokeStyle = p.color;
+        trailCtx.moveTo(p.x, p.y);
+        started = true;
+      } else {
+        trailCtx.lineTo(p.x, p.y);
+      }
+      lastSeg = p.seg; lastColor = p.color;
+    }
+    if (started) trailCtx.stroke();
+  }
+
+  function drawFixedCircle(R) {
+    const lineColor = state.bg === 'white' ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.32)';
+    const fill = 'rgba(248,248,240,0.25)';
+    const RX = ringCx(), RY = ringCy();
+    gearCtx.lineWidth = 1.2;
+    gearCtx.strokeStyle = lineColor;
+    if (!state.locked) gearCtx.setLineDash([6, 4]);
+
+    if (state.fixed === 'circle') {
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R, 0, Math.PI*2); gearCtx.fill(); gearCtx.stroke();
+    } else {
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath();
+      gearCtx.arc(RX, RY, R + 10, 0, Math.PI*2);
+      gearCtx.arc(RX, RY, R, 0, Math.PI*2);
+      gearCtx.fill('evenodd');
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R, 0, Math.PI*2); gearCtx.stroke();
+      gearCtx.beginPath(); gearCtx.arc(RX, RY, R + 10, 0, Math.PI*2); gearCtx.stroke();
+    }
+    gearCtx.setLineDash([]);
+  }
+
+  function drawCog(s) {
+    const accent = state.bg === 'white' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)';
+    const fill = 'rgba(248,248,240,0.25)';
+    const RX = ringCx(), RY = ringCy();
+
+    // ── Body (clipped to ring interior so it never visually escapes) ──────
+    gearCtx.save();
+    if (state.fixed === 'ring') {
+      gearCtx.beginPath();
+      gearCtx.arc(RX, RY, s.R + 2, 0, Math.PI * 2);
+      gearCtx.clip();
+    }
+    gearCtx.lineWidth = 1.2;
+    if (s.cog.type === 'round') {
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.fill();
+      gearCtx.strokeStyle = accent;
+      gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, s.r, 0, Math.PI*2); gearCtx.stroke();
+    } else {
+      const tab = COG_TABLES[s.cog.type];
+      const cosT = Math.cos(s.theta), sinT = Math.sin(s.theta);
+      gearCtx.fillStyle = fill;
+      gearCtx.beginPath();
+      for (let i = 0; i <= tab.samples; i++) {
+        const xb = s.scale * tab.x[i], yb = s.scale * tab.y[i];
+        const x = s.gx + xb * cosT - yb * sinT;
+        const y = s.gy + xb * sinT + yb * cosT;
+        if (i === 0) gearCtx.moveTo(x, y); else gearCtx.lineTo(x, y);
+      }
+      gearCtx.closePath();
+      gearCtx.fill();
+      gearCtx.strokeStyle = accent;
+      gearCtx.stroke();
+    }
+    gearCtx.restore();
+
+    // ── Center dot, spoke, pen dot (drawn unclipped) ──────────────────────
+    gearCtx.strokeStyle = accent;
+    gearCtx.lineWidth = 1.2;
+    gearCtx.fillStyle = accent;
+    gearCtx.beginPath(); gearCtx.arc(s.gx, s.gy, 2, 0, Math.PI*2); gearCtx.fill();
+    gearCtx.beginPath(); gearCtx.moveTo(s.gx, s.gy); gearCtx.lineTo(s.px, s.py); gearCtx.stroke();
+    gearCtx.fillStyle = state.color;
+    gearCtx.beginPath(); gearCtx.arc(s.px, s.py, 4.5, 0, Math.PI*2); gearCtx.fill();
+    gearCtx.lineWidth = 1.5;
+    gearCtx.strokeStyle = state.bg === 'white' ? '#fff' : '#000';
+    gearCtx.stroke();
+  }
+
+  function drawGears() {
+    gearCtx.clearRect(0, 0, W, H);
+    const s = stateAt(state.t);
+    drawFixedCircle(s.R);
+    drawCog(s);
+  }
+
+  function step(deltaT) {
+    if (deltaT === 0) return;
+    const subdivs = Math.max(1, Math.ceil(Math.abs(deltaT) * 80));
+    const dt = deltaT / subdivs;
+    trailCtx.lineCap = 'round';
+    trailCtx.lineJoin = 'round';
+    trailCtx.lineWidth = 1.8;
+    trailCtx.strokeStyle = state.color;
+    for (let i = 0; i < subdivs; i++) {
+      state.t += dt;
+      const s = stateAt(state.t);
+      if (lastPen) {
+        trailCtx.beginPath();
+        trailCtx.moveTo(lastPen.x, lastPen.y);
+        trailCtx.lineTo(s.px, s.py);
+        trailCtx.stroke();
+      }
+      history.push({ x: s.px, y: s.py, color: state.color, seg: segId });
+      lastPen = { x: s.px, y: s.py };
+    }
+  }
+
+  function breakSegment() {
+    segId++;
+    lastPen = null;
+  }
+
+  let prev = 0;
+  function frame(now) {
+    if (!prev) prev = now;
+    const dt = Math.min(0.05, (now - prev) / 1000);
+    prev = now;
+    if (!state.paused && state.locked) step(dt * state.speed * 0.5);
+    drawGears();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- Drag ----
+  let dragging = false, dragMode = null, lastAngle = 0;
+  let moveAnchorX = 0, moveAnchorY = 0;
+  let autoRelockTimer = null;
+  const AUTO_RELOCK_MS = 4000;
+
+  function pointerXY(e) {
+    if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+  function pointerAngle(e) {
+    const p = pointerXY(e);
+    return Math.atan2(p.y - ringCy(), p.x - ringCx());
+  }
+  function onDown(e) {
+    const p = pointerXY(e);
+    if (!state.locked) {
+      e.preventDefault();
+      dragging = true;
+      dragMode = 'move';
+      moveAnchorX = p.x - state.ringX;
+      moveAnchorY = p.y - state.ringY;
+      clearTimeout(autoRelockTimer);
+      breakSegment();
+      return;
+    }
+    if (!state.paused) return;
+    e.preventDefault();
+    dragging = true;
+    dragMode = 'rotate';
+    lastAngle = pointerAngle(e);
+    if (lastPen === null) {
+      const s = stateAt(state.t);
+      lastPen = { x: s.px, y: s.py };
+    }
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    if (dragMode === 'move') {
+      const p = pointerXY(e);
+      state.ringX = p.x - moveAnchorX;
+      state.ringY = p.y - moveAnchorY;
+      state.ringX = Math.max(-cx, Math.min(cx, state.ringX));
+      state.ringY = Math.max(-cy, Math.min(cy, state.ringY));
+    } else if (dragMode === 'rotate') {
+      const a = pointerAngle(e);
+      let delta = a - lastAngle;
+      if (delta > Math.PI)  delta -= 2 * Math.PI;
+      if (delta < -Math.PI) delta += 2 * Math.PI;
+      lastAngle = a;
+      step(delta);
+    }
+  }
+  function onUp() {
+    if (dragging && dragMode === 'move') {
+      scheduleAutoRelock();
+    }
+    dragging = false;
+    dragMode = null;
+  }
+  function scheduleAutoRelock() {
+    clearTimeout(autoRelockTimer);
+    autoRelockTimer = setTimeout(() => {
+      if (!state.locked) {
+        state.locked = true;
+        updateLockUI();
+        showHint('Ring locked', 1100);
+      }
+    }, AUTO_RELOCK_MS);
+  }
+  gearCv.addEventListener('touchstart', onDown, { passive: false });
+  gearCv.addEventListener('touchmove',  onMove, { passive: false });
+  gearCv.addEventListener('touchend',   onUp);
+  gearCv.addEventListener('touchcancel', onUp);
+  gearCv.addEventListener('mousedown',  onDown);
+  window.addEventListener('mousemove',  onMove);
+  window.addEventListener('mouseup',    onUp);
+
+  // ---- UI: Colors ----
+  const colorsEl = document.getElementById('colors');
+  COLORS.forEach((c) => {
+    const el = document.createElement('div');
+    el.className = 'color' + (c === state.color ? ' active' : '');
+    el.style.background = c;
+    el.dataset.ink = c;
+    el.addEventListener('click', () => {
+      state.color = c;
+      breakSegment();
+      colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+    });
+    colorsEl.appendChild(el);
+  });
+
+  // ---- UI: Shape buttons ----
+  const SHAPE_SVGS = {
+    round:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/></svg>',
+    plus:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+    triangle:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 4L20.5 19.5H3.5Z"/></svg>',
+    pentagon:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><polygon points="12,3 20.6,9.2 17.3,19.3 6.7,19.3 3.4,9.2"/></svg>',
+    rectangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="12" rx="9.5" ry="5.8"/></svg>',
+    hexagon:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><polygon points="12,3.2 19.2,7.4 19.2,16.6 12,20.8 4.8,16.6 4.8,7.4"/></svg>',
+  };
+
+  const shapeBtnsEl = document.getElementById('shape-btns');
+
+  function matchHoleByFraction(oldCog, oldHoleIdx, newCog) {
+    const target = oldCog.holes[Math.min(oldHoleIdx, oldCog.holes.length - 1)].dist;
+    let best = 0, bestDiff = Infinity;
+    for (let i = 0; i < newCog.holes.length; i++) {
+      const diff = Math.abs(newCog.holes[i].dist - target);
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
+    }
+    return best;
+  }
+
+  SHAPE_TYPES.forEach(type => {
+    const el = document.createElement('div');
+    el.className = 'chip' + (type === state.shapeType ? ' active' : '');
+    el.innerHTML = SHAPE_SVGS[type];
+    el.title = SHAPE_LABELS[type];
+    el.setAttribute('aria-label', SHAPE_LABELS[type]);
+    el.addEventListener('click', () => {
+      if (type !== state.shapeType) {
+        const oldCog = getActiveCog();
+        state.shapeType = type;
+        const newCog = getActiveCog();
+        state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
+        state.t = 0;
+        breakSegment();
+        updateShapeUI();
+      }
+      openHolePicker();
+    });
+    shapeBtnsEl.appendChild(el);
+  });
+
+  // ---- UI: Cog size slider ----
+  const cogSizeSlider = document.getElementById('cog-size');
+  const cogSizeValEl  = document.getElementById('cog-size-val');
+
+  function updateSizeLabel() {
+    cogSizeValEl.textContent = sizePercentFromStep(state.sizeStep) + '%';
+  }
+
+  cogSizeSlider.value = state.sizeStep;
+  cogSizeSlider.addEventListener('input', () => {
+    const newStep = parseInt(cogSizeSlider.value, 10);
+    if (newStep === state.sizeStep) return;
+    if (state.shapeType === 'round') {
+      const oldCog = getActiveCog();
+      state.sizeStep = newStep;
+      const newCog = getActiveCog();
+      state.holeIdx = matchHoleByFraction(oldCog, state.holeIdx, newCog);
+    } else {
+      state.sizeStep = newStep;
+      const cog = getActiveCog();
+      state.holeIdx = Math.min(state.holeIdx, cog.holes.length - 1);
+    }
+    state.t = 0;
+    breakSegment();
+    updateSizeLabel();
+    updateHoleLabel();
+  });
+  updateSizeLabel();
+
+  // ---- UI: Hole label + pick button ----
+  const holeLabelEl = document.getElementById('hole-label');
+
+  function updateHoleLabel() {
+    const cog = getActiveCog();
+    holeLabelEl.textContent = 'Hole ' + (state.holeIdx + 1) + ' of ' + cog.holes.length;
+  }
+  updateHoleLabel();
+
+  document.getElementById('pick-hole-btn').addEventListener('click', openHolePicker);
+
+  function updateShapeUI() {
+    shapeBtnsEl.querySelectorAll('.chip').forEach((el, i) => {
+      el.classList.toggle('active', SHAPE_TYPES[i] === state.shapeType);
+    });
+    updateSizeLabel();
+    updateHoleLabel();
+  }
+
+  // ---- UI: Fixed type ----
+  document.querySelectorAll('[data-fixed]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-fixed]').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      state.fixed = el.dataset.fixed;
+      state.t = 0;
+      breakSegment();
+    });
+  });
+
+  // ---- UI: Background ----
+  document.querySelectorAll('[data-bg]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-bg]').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      state.bg = el.dataset.bg;
+      document.body.classList.toggle('dark', state.bg === 'black');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', state.bg === 'black' ? '#000000' : '#ffffff');
+    });
+  });
+
+  // ---- UI: Sliders ----
+  function bindSlider(id, valId, suffix, cb) {
+    const sl = document.getElementById(id);
+    const vl = document.getElementById(valId);
+    const update = () => {
+      vl.textContent = sl.value + (suffix || '');
+      cb(parseFloat(sl.value));
+    };
+    sl.addEventListener('input', update);
+    update();
+  }
+  bindSlider('size',  'size-val',  '%', v => { state.sizeFrac = v / 100; breakSegment(); });
+  bindSlider('speed', 'speed-val', '',  v => { state.speed = v; });
+
+  // ---- UI: Drawer buttons ----
+  function clearAll() {
+    history.length = 0;
+    trailCtx.clearRect(0, 0, W, H);
+    segId = 0;
+    lastPen = null;
+    state.t = 0;
+  }
+  document.getElementById('clear').addEventListener('click', clearAll);
+  document.getElementById('save').addEventListener('click', () => {
+    const c = document.createElement('canvas');
+    c.width = trailCv.width; c.height = trailCv.height;
+    const x = c.getContext('2d');
+    x.fillStyle = state.bg === 'white' ? '#ffffff' : '#000000';
+    x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(trailCv, 0, 0);
+    c.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'spirograph.png';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  });
+
+  // ---- UI: Floating buttons ----
+  const PLAY_ICON  = '<polygon points="7,4 20,12 7,20" />';
+  const PAUSE_ICON = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+  function syncPauseIcon() {
+    document.getElementById('pause-icon').innerHTML = state.paused ? PLAY_ICON : PAUSE_ICON;
+  }
+  function pauseAutoDraw(reason, ms) {
+    if (state.paused) return;
+    state.paused = true;
+    syncPauseIcon();
+    if (reason) showHint(reason, ms || 1400);
+  }
+  document.getElementById('fb-pause').addEventListener('click', () => {
+    state.paused = !state.paused;
+    syncPauseIcon();
+    if (state.paused) {
+      showHint('Paused — drag to rotate', 1500);
+    } else {
+      const s = stateAt(state.t);
+      lastPen = { x: s.px, y: s.py };
+      showHint('Auto-rotating', 900);
+    }
+  });
+  document.getElementById('fb-clear').addEventListener('click', clearAll);
+  syncPauseIcon();
+
+  // ---- UI: Lock button ----
+  const LOCK_CLOSED =
+    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
+    '<path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+  const LOCK_OPEN =
+    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
+    '<path d="M8 11V7a4 4 0 0 1 7.5-1.5"/>';
+  function updateLockUI() {
+    const btn = document.getElementById('lock-btn');
+    const icon = document.getElementById('lock-icon');
+    icon.innerHTML = state.locked ? LOCK_CLOSED : LOCK_OPEN;
+    btn.classList.toggle('unlocked', !state.locked);
+  }
+  document.getElementById('lock-btn').addEventListener('click', () => {
+    state.locked = !state.locked;
+    updateLockUI();
+    if (!state.locked) {
+      pauseAutoDraw('Paused while ring is unlocked', 1600);
+      showHint('Drag to move ring · Auto-locks after 4s', 2000);
+      scheduleAutoRelock();
+    } else {
+      clearTimeout(autoRelockTimer);
+      showHint('Ring locked', 900);
+    }
+  });
+  updateLockUI();
+
+  // ---- UI: Drawer ----
+  const drawer = document.getElementById('drawer');
+  const overlay = document.getElementById('overlay');
+  document.getElementById('menu-btn').addEventListener('click', () => {
+    pauseAutoDraw('Paused while drawer is open', 1500);
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  });
+  overlay.addEventListener('click', () => {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+  });
+
+  // ---- Hole picker modal ----
+  const holeModal = document.getElementById('hole-modal');
+  const holeCogEl = document.getElementById('hole-cog');
+  const holeTitle = document.getElementById('hole-modal-title');
+
+  function buildHoleModalSVG() {
+    const cog = getActiveCog();
+    holeTitle.textContent = 'Cog ' + cog.name + ' · choose a pen hole';
+    const maxRho = cog.type === 'round' ? 1 : COG_DEFS[cog.type].maxRho;
+    const half = (maxRho + 0.10).toFixed(2);
+    const sz = (parseFloat(half) * 2).toFixed(2);
+    let svg = '<svg viewBox="-' + half + ' -' + half + ' ' + sz + ' ' + sz + '" xmlns="http://www.w3.org/2000/svg">';
+    if (cog.type === 'round') {
+      svg += '<circle cx="0" cy="0" r="1" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="0.012"/>';
+    } else {
+      const def = COG_DEFS[cog.type];
+      let path = '';
+      const N = 240;
+      for (let i = 0; i <= N; i++) {
+        const u = (i / N) * 2 * Math.PI;
+        const p = def.eval(u);
+        path += (i === 0 ? 'M' : 'L') + p.x.toFixed(4) + ',' + p.y.toFixed(4);
+      }
+      path += 'Z';
+      svg += '<path d="' + path + '" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" stroke-width="' + (0.012 * maxRho).toFixed(4) + '"/>';
+    }
+    svg += '<circle cx="0" cy="0" r="' + (0.025 * maxRho).toFixed(4) + '" fill="rgba(255,255,255,0.7)"/>';
+    const visR = 0.038 * maxRho;
+    const hitR = 0.075 * maxRho;
+    cog.holes.forEach((h, i) => {
+      const rho = rhoOf(cog, h.ang);
+      const hx = (h.dist * rho * Math.cos(h.ang)).toFixed(4);
+      const hy = (h.dist * rho * Math.sin(h.ang)).toFixed(4);
+      const isActive = i === state.holeIdx;
+      const fill = isActive ? state.color : 'rgba(0,0,0,0.92)';
+      const stroke = isActive ? state.color : 'rgba(255,255,255,0.7)';
+      const sw = ((isActive ? 0.018 : 0.012) * maxRho).toFixed(4);
+      svg += '<g data-hole="' + i + '">';
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + visR.toFixed(4) + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+      svg += '<circle cx="' + hx + '" cy="' + hy + '" r="' + hitR.toFixed(4) + '" fill="rgba(0,0,0,0)" style="cursor:pointer"/>';
+      svg += '</g>';
+    });
+    svg += '</svg>';
+    holeCogEl.innerHTML = svg;
+    holeCogEl.querySelectorAll('g[data-hole]').forEach(g => {
+      const i = parseInt(g.getAttribute('data-hole'), 10);
+      g.addEventListener('click', () => {
+        if (i !== state.holeIdx) {
+          state.holeIdx = i;
+          breakSegment();
+          updateHoleLabel();
+        }
+        closeHolePicker();
+      });
+    });
+  }
+  function openHolePicker() {
+    buildHoleModalSVG();
+    holeModal.classList.add('open');
+  }
+  function closeHolePicker() {
+    holeModal.classList.remove('open');
+  }
+  document.getElementById('hole-modal-close').addEventListener('click', closeHolePicker);
+  holeModal.addEventListener('click', (e) => {
+    if (e.target === holeModal) closeHolePicker();
+  });
+
+  // ---- Hint toast ----
+  let hintTimer = null;
+  function showHint(text, ms) {
+    const h = document.getElementById('hint');
+    h.textContent = text;
+    h.classList.add('show');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => h.classList.remove('show'), ms || 1500);
+  }
+
+  // ---- Resize ----
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+
+  // ---- Boot ----
+  resize();
+  {
+    const s0 = stateAt(state.t);
+    lastPen = { x: s0.px, y: s0.py };
+  }
+  showHint('Drag to rotate · Tap a shape to pick a hole', 2600);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
