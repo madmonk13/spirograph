@@ -1090,6 +1090,8 @@
       shapeType: state.shapeType,
       sizeStep: state.sizeStep,
       t: state.t,
+      ringX: state.ringX,
+      ringY: state.ringY,
     };
   }
 
@@ -1141,12 +1143,16 @@
 
   function restoreNavigatedState(seg) {
     const ss = seg.state;
-    state.color    = ss.color;
-    state.penWidth = ss.penWidth;
-    state.penPos   = ss.penPos;
+    state.color     = ss.color;
+    state.penWidth  = ss.penWidth;
+    state.penPos    = ss.penPos;
     state.shapeType = ss.shapeType;
-    state.sizeStep = ss.sizeStep;
-    state.t        = ss.t;
+    state.sizeStep  = ss.sizeStep;
+    state.t         = ss.t;
+    // Restore ring position so stateAt(t) matches the stored lastPen point —
+    // without this, a moved ring causes a spurious line on the first stroke.
+    if (ss.ringX !== undefined) state.ringX = ss.ringX;
+    if (ss.ringY !== undefined) state.ringY = ss.ringY;
     // Sync all UI controls to match restored state
     syncAllUI();
   }
@@ -1219,6 +1225,8 @@
           bg:        state.bg,
           speed:     state.speed,
           t:         state.t,
+          ringX:     state.ringX,
+          ringY:     state.ringY,
         },
       }));
     } catch(e) { /* storage full or unavailable — fail silently */ }
@@ -1246,11 +1254,12 @@
         if (s.bg        !== undefined) state.bg        = s.bg;
         if (s.speed     !== undefined) state.speed     = s.speed;
         if (s.t         !== undefined) state.t         = s.t;
+        if (s.ringX     !== undefined) state.ringX     = s.ringX;
+        if (s.ringY     !== undefined) state.ringY     = s.ringY;
       }
 
-      // lastPen intentionally NOT restored — ring position isn't saved,
-      // so saved coordinates would be stale and cause a spurious line on first draw.
-      // step() will start a fresh segment from the current cog position.
+      // lastPen intentionally NOT restored — step() will start a fresh segment
+      // from the current cog position on the first draw after reload.
       lastPen = null;
 
       return segments.length > 0;
