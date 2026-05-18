@@ -95,7 +95,7 @@
   .chip.active { background: #222; color: #fff; border-color: #222; }
   body.dark .chip.active { background: #f0f0f0; color: #000; border-color: #f0f0f0; }
 
-  .colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .colors { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
   .color {
     aspect-ratio: 1; border-radius: 50%; cursor: pointer;
     border: 3px solid transparent; transition: transform 0.15s, border-color 0.15s;
@@ -202,6 +202,11 @@
   body.dark .dtab.active { color: #f0f0f0; border-bottom-color: #f0f0f0; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; padding-top: 4px; }
+
+  /* Custom color picker swatch — rainbow by default, solid when a color is chosen */
+  .color.custom-picker {
+    background: linear-gradient(to right, #ff1f1f, #ff8a00, #ffd400, #1fc24a, #1f7dff, #9c27b0, #ff1f1f);
+  }
 
   /* No-color swatch */
   .color.no-color { background: #111 !important; position: relative; overflow: hidden; }
@@ -345,7 +350,7 @@
       <div class="section">
         <h3>Circumference</h3>
         <div class="slider-wrap">
-          <input type="range" id="size" min="20" max="100" value="100">
+          <input type="range" id="size" min="20" max="300" value="100">
           <span class="val" id="size-val">75%</span>
         </div>
       </div>
@@ -389,32 +394,67 @@
   let W = 0, H = 0, cx = 0, cy = 0;
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
-  // Crayola 24-pack (2019) with original vivid values for ROYGBIV matches
+  // Crayola-inspired 46-color palette in ROYGBIV arc, plus custom + no-color
+  // '__custom__' is a sentinel — rendered as the rainbow picker swatch
   const COLORS = [
-    { hex: '#ff1f1f', name: 'Red' },           // original vivid red
+    // — Reds —
+    { hex: '#FF1F1F', name: 'Red' },
     { hex: '#FD0E35', name: 'Scarlet' },
+    { hex: '#CB4154', name: 'Brick Red' },
+    { hex: '#CD4A4C', name: 'Mahogany' },
+    // — Oranges —
     { hex: '#FF5349', name: 'Red-Orange' },
-    { hex: '#ff8a00', name: 'Orange' },         // original vivid orange
+    { hex: '#FF7F49', name: 'Burnt Orange' },
+    { hex: '#FF8A00', name: 'Orange' },
     { hex: '#FFAE42', name: 'Yellow-Orange' },
-    { hex: '#ffd400', name: 'Yellow' },         // original vivid yellow
+    // — Yellows —
+    { hex: '#FFD400', name: 'Yellow' },
+    { hex: '#FCD667', name: 'Goldenrod' },
     { hex: '#F0E891', name: 'Green-Yellow' },
     { hex: '#C5E384', name: 'Yellow-Green' },
-    { hex: '#1fc24a', name: 'Green' },          // original vivid green
+    // — Greens —
+    { hex: '#71BC78', name: 'Fern' },
+    { hex: '#1FC24A', name: 'Green' },
+    { hex: '#3BB08F', name: 'Jungle Green' },
+    { hex: '#17806D', name: 'Tropical Rain Forest' },
+    // — Teals / Blues —
+    { hex: '#18A7B5', name: 'Teal Blue' },
     { hex: '#0D98BA', name: 'Blue-Green' },
     { hex: '#02A4D3', name: 'Cerulean' },
-    { hex: '#1f7dff', name: 'Blue' },           // original vivid blue
+    { hex: '#80DAEB', name: 'Sky Blue' },
+    { hex: '#9ACEEB', name: 'Cornflower' },
+    { hex: '#B0B7C6', name: 'Cadet Blue' },
+    { hex: '#1F7DFF', name: 'Blue' },
     { hex: '#3C69E7', name: 'Bluetiful' },
-    { hex: '#4b1f9c', name: 'Indigo' },         // original vivid indigo
+    // — Indigos / Violets —
+    { hex: '#4B1F9C', name: 'Indigo' },
     { hex: '#7366BD', name: 'Blue-Violet' },
-    { hex: '#9c27b0', name: 'Violet' },         // original vivid violet
+    { hex: '#9C27B0', name: 'Violet' },
+    { hex: '#8E4585', name: 'Plum' },
+    // — Red-Violets / Magentas —
     { hex: '#C0448F', name: 'Red-Violet' },
+    { hex: '#C54B8C', name: 'Mulberry' },
     { hex: '#F75394', name: 'Violet-Red' },
+    { hex: '#FF1DCE', name: 'Hot Magenta' },
+    // — Pinks / Pastels —
+    { hex: '#FF43A4', name: 'Wild Strawberry' },
+    { hex: '#FFA6C9', name: 'Carnation Pink' },
+    { hex: '#E29CD2', name: 'Orchid' },
+    { hex: '#FCB4D5', name: 'Lavender' },
+    { hex: '#FF9BAA', name: 'Salmon' },
+    { hex: '#FFB7D5', name: 'Cotton Candy' },
+    { hex: '#FFCFAB', name: 'Peach' },
     { hex: '#FDD5B1', name: 'Apricot' },
+    // — Earth / Neutrals —
+    { hex: '#FAA76C', name: 'Tan' },
     { hex: '#AF593E', name: 'Brown' },
     { hex: '#8B8680', name: 'Gray' },
+    { hex: '#CDC5C2', name: 'Silver' },
     { hex: '#000000', name: 'Black' },
     { hex: '#FFFFFF', name: 'White' },
-    { hex: null,      name: 'No Color' },
+    // — Special swatches —
+    { hex: '__custom__', name: 'Custom Color' },
+    { hex: null,         name: 'No Color' },
   ];
 
   const ROUND_MIN_PERCENT = 10;
@@ -1160,9 +1200,17 @@
   function syncAllUI() {
     // Color swatches
     document.querySelectorAll('#colors .color').forEach(el => {
-      const matches = state.color === null
-        ? el.dataset.ink === 'none'
-        : el.dataset.ink === state.color;
+      const isCustomSwatch = el.dataset.ink === '__custom__';
+      let matches;
+      if (isCustomSwatch) {
+        matches = state.color !== null && state.color === customColor;
+        // Show chosen color as solid fill, or reset to rainbow
+        el.style.background = (matches && customColor) ? customColor : '';
+      } else {
+        matches = state.color === null
+          ? el.dataset.ink === 'none'
+          : el.dataset.ink === state.color;
+      }
       el.classList.toggle('active', matches);
     });
     // Shape buttons
@@ -1215,18 +1263,19 @@
         segments,
         currentIdx,
         state: {
-          color:     state.color,
-          penPos:    state.penPos,
-          penWidth:  state.penWidth,
-          shapeType: state.shapeType,
-          sizeStep:  state.sizeStep,
-          sizeFrac:  state.sizeFrac,
-          fixed:     state.fixed,
-          bg:        state.bg,
-          speed:     state.speed,
-          t:         state.t,
-          ringX:     state.ringX,
-          ringY:     state.ringY,
+          color:       state.color,
+          penPos:      state.penPos,
+          penWidth:    state.penWidth,
+          shapeType:   state.shapeType,
+          sizeStep:    state.sizeStep,
+          sizeFrac:    state.sizeFrac,
+          fixed:       state.fixed,
+          bg:          state.bg,
+          speed:       state.speed,
+          t:           state.t,
+          ringX:       state.ringX,
+          ringY:       state.ringY,
+          customColor: customColor,
         },
       }));
     } catch(e) { /* storage full or unavailable — fail silently */ }
@@ -1254,8 +1303,9 @@
         if (s.bg        !== undefined) state.bg        = s.bg;
         if (s.speed     !== undefined) state.speed     = s.speed;
         if (s.t         !== undefined) state.t         = s.t;
-        if (s.ringX     !== undefined) state.ringX     = s.ringX;
-        if (s.ringY     !== undefined) state.ringY     = s.ringY;
+        if (s.ringX       !== undefined) state.ringX  = s.ringX;
+        if (s.ringY       !== undefined) state.ringY  = s.ringY;
+        if (s.customColor !== undefined) customColor  = s.customColor;
       }
 
       // lastPen intentionally NOT restored — step() will start a fresh segment
@@ -1375,11 +1425,52 @@
   window.addEventListener('mouseup',    onUp);
 
   // ---- UI: Colors ----
+  let customColor = null;   // last color chosen via the native picker
+  let customSwatchEl = null;
+
+  // Hidden native color input — triggered by the rainbow swatch
+  const colorPickerInput = document.createElement('input');
+  colorPickerInput.type = 'color';
+  colorPickerInput.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+  document.body.appendChild(colorPickerInput);
+
+  function applyCustomColor(hex) {
+    customColor = hex;
+    state.color = hex;
+    breakSegment();
+    colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
+    if (customSwatchEl) {
+      customSwatchEl.classList.add('active');
+      customSwatchEl.style.background = hex; // solid fill replaces rainbow
+    }
+    drawPenPreview();
+    saveSession();
+  }
+
+  colorPickerInput.addEventListener('input', () => applyCustomColor(colorPickerInput.value));
+  colorPickerInput.addEventListener('change', () => applyCustomColor(colorPickerInput.value));
+
   const colorsEl = document.getElementById('colors');
   COLORS.forEach(({ hex, name }) => {
     const el = document.createElement('div');
-    const isNoColor = hex === null;
-    el.className = 'color' + (isNoColor ? ' no-color' : '') + (hex === state.color ? ' active' : '');
+    const isNoColor   = hex === null;
+    const isCustom    = hex === '__custom__';
+
+    if (isCustom) {
+      el.className = 'color custom-picker';
+      el.title = name;
+      el.setAttribute('aria-label', name);
+      el.dataset.ink = '__custom__';
+      el.addEventListener('click', () => {
+        if (customColor) colorPickerInput.value = customColor;
+        colorPickerInput.click();
+      });
+      colorsEl.appendChild(el);
+      customSwatchEl = el;
+      return;
+    }
+
+    el.className = 'color' + (isNoColor ? ' no-color' : '');
     if (!isNoColor) el.style.background = hex;
     el.dataset.ink = isNoColor ? 'none' : hex;
     el.title = name;
@@ -1389,6 +1480,8 @@
       breakSegment();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
+      // Reset custom swatch back to rainbow when a named color is chosen
+      if (customSwatchEl) customSwatchEl.style.background = '';
       drawPenPreview();
     });
     colorsEl.appendChild(el);
