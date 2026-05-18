@@ -382,7 +382,7 @@
       <div class="section">
         <div class="actions">
           <button class="btn" id="clear">Clear</button>
-          <button class="btn primary" id="save">Save PNG</button>
+          <button class="btn primary" id="save">Export Image</button>
         </div>
       </div>
     </div>
@@ -1629,10 +1629,24 @@
     x.fillStyle = state.bg === 'white' ? '#ffffff' : '#000000';
     x.fillRect(0, 0, c.width, c.height);
     x.drawImage(trailCv, 0, 0);
-    c.toBlob(blob => {
+    c.toBlob(async blob => {
+      const filename = 'mandaloop.png';
+      // iOS: use Web Share API so "Save Image" sends directly to Photos
+      if (navigator.canShare) {
+        const file = new File([blob], filename, { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: 'Mandaloop' });
+            return;
+          } catch(e) {
+            if (e.name === 'AbortError') return; // user dismissed share sheet — that's fine
+          }
+        }
+      }
+      // Desktop / Android fallback: trigger download
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'mandaloop.png';
+      a.href = url; a.download = filename;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
