@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-orientation" content="portrait">
 <meta name="theme-color" content="#000000">
 <title>Mandaloop</title>
 <style>
@@ -1756,6 +1757,13 @@
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
   window.addEventListener('beforeunload', saveSession);
+
+  // ---- Orientation lock ----
+  // Works when installed as a PWA or packaged as a native app.
+  // Fails silently in regular browser sessions (iOS Safari doesn't support the API).
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('portrait').catch(() => {});
+  }
 
   // ---- Boot ----
   const sessionRestored = loadSession();
