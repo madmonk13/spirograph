@@ -206,6 +206,12 @@
   /* Custom color picker swatch — rainbow by default, solid when a color is chosen */
   .color.custom-picker {
     background: linear-gradient(to right, #ff1f1f, #ff8a00, #ffd400, #1fc24a, #1f7dff, #9c27b0, #ff1f1f);
+    position: relative; overflow: hidden;
+  }
+  /* Native color input overlaid on the swatch — invisible but directly tappable on iOS */
+  .color.custom-picker input[type=color] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer; border: none; padding: 0;
   }
 
   /* No-color swatch */
@@ -1305,7 +1311,11 @@
         if (s.t         !== undefined) state.t         = s.t;
         if (s.ringX       !== undefined) state.ringX  = s.ringX;
         if (s.ringY       !== undefined) state.ringY  = s.ringY;
-        if (s.customColor !== undefined) customColor  = s.customColor;
+        if (s.customColor !== undefined) {
+          customColor = s.customColor;
+          // Sync the nested input value once it exists (set after colors render)
+          if (colorPickerInput && customColor) colorPickerInput.value = customColor;
+        }
       }
 
       // lastPen intentionally NOT restored — step() will start a fresh segment
@@ -1427,12 +1437,7 @@
   // ---- UI: Colors ----
   let customColor = null;   // last color chosen via the native picker
   let customSwatchEl = null;
-
-  // Hidden native color input — triggered by the rainbow swatch
-  const colorPickerInput = document.createElement('input');
-  colorPickerInput.type = 'color';
-  colorPickerInput.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
-  document.body.appendChild(colorPickerInput);
+  let colorPickerInput = null;
 
   function applyCustomColor(hex) {
     customColor = hex;
@@ -1447,9 +1452,6 @@
     saveSession();
   }
 
-  colorPickerInput.addEventListener('input', () => applyCustomColor(colorPickerInput.value));
-  colorPickerInput.addEventListener('change', () => applyCustomColor(colorPickerInput.value));
-
   const colorsEl = document.getElementById('colors');
   COLORS.forEach(({ hex, name }) => {
     const el = document.createElement('div');
@@ -1461,10 +1463,13 @@
       el.title = name;
       el.setAttribute('aria-label', name);
       el.dataset.ink = '__custom__';
-      el.addEventListener('click', () => {
-        if (customColor) colorPickerInput.value = customColor;
-        colorPickerInput.click();
-      });
+      // Nest the input directly inside the swatch so iOS gets a real tap
+      colorPickerInput = document.createElement('input');
+      colorPickerInput.type = 'color';
+      colorPickerInput.value = customColor || '#ff0000';
+      colorPickerInput.addEventListener('input',  () => applyCustomColor(colorPickerInput.value));
+      colorPickerInput.addEventListener('change', () => applyCustomColor(colorPickerInput.value));
+      el.appendChild(colorPickerInput);
       colorsEl.appendChild(el);
       customSwatchEl = el;
       return;
