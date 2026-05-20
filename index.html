@@ -1413,6 +1413,8 @@
   function onUp() {
     if (dragging && dragMode === 'move') {
       scheduleAutoRelock();
+    } else if (dragging && dragMode === 'rotate') {
+      saveSession(); // commit the drawn segment on finger lift
     }
     dragging = false;
     dragMode = null;
@@ -1670,6 +1672,7 @@
     state.paused = !state.paused;
     syncPauseIcon();
     if (state.paused) {
+      saveSession(); // commit auto-draw segment on pause
       showHint('Paused — drag to rotate', 1500);
     } else {
       showHint('Auto-rotating', 900);
@@ -1756,7 +1759,6 @@
   // ---- Resize ----
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
-  window.addEventListener('beforeunload', saveSession);
 
   // ---- Orientation lock ----
   // Works when installed as a PWA or packaged as a native app.
