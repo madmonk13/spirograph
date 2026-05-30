@@ -182,7 +182,7 @@
     background: rgba(0,0,0,0.78); color: #fff;
     padding: 9px 16px; border-radius: 22px;
     font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
-    z-index: 5; white-space: nowrap;
+    z-index: 50; white-space: nowrap;
   }
   #hint.show { opacity: 1; }
 
@@ -882,6 +882,7 @@
     locked: true,
     ringX: 0, ringY: 0,
     t: 0,
+    cogPhase: 0,        // rotation offset — compensates for size changes so cog doesn't spin
   };
   document.body.classList.add('dark');
 
@@ -939,16 +940,18 @@
         gx = RX + (R + r) * Math.cos(t);
         gy = RY + (R + r) * Math.sin(t);
         const k = (R + r) / r;
-        theta = k * t + Math.PI;
-        const c = -Math.cos(k * t), s = -Math.sin(k * t);
+        const penAngle = k * t + Math.PI + state.cogPhase;
+        theta = penAngle;
+        const c = Math.cos(penAngle), s = Math.sin(penAngle);
         px = gx + hx * c - hy * s;
         py = gy + hx * s + hy * c;
       } else {
         gx = RX + (R - r) * Math.cos(t);
         gy = RY + (R - r) * Math.sin(t);
         const k = (R - r) / r;
-        theta = -k * t;
-        const c = Math.cos(-k * t), s = Math.sin(-k * t);
+        const penAngle = -k * t + state.cogPhase;
+        theta = penAngle;
+        const c = Math.cos(penAngle), s = Math.sin(penAngle);
         px = gx + hx * c - hy * s;
         py = gy + hx * s + hy * c;
       }
@@ -956,11 +959,10 @@
     }
 
     // Non-round: pen along body-frame x-axis at penPos * scale.
-    // maxRho for these shapes is ~1.02–1.06, so penPos=0.90 stays safely
-    // inside the body boundary in all orientations.
     const scale = bodyScaleFor(cog, ringR);
     const pose = getNonRoundState(cog, state.fixed, t, R, RX, RY, scale);
-    const gx = pose.gx, gy = pose.gy, theta = pose.theta;
+    const gx = pose.gx, gy = pose.gy;
+    const theta = pose.theta + state.cogPhase;
     const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
     const hbx = state.penPos * scale;
@@ -1139,6 +1141,7 @@
       t: state.t,
       ringX: state.ringX,
       ringY: state.ringY,
+      cogPhase: state.cogPhase,
     };
   }
 
@@ -1198,8 +1201,9 @@
     state.t         = ss.t;
     // Restore ring position so stateAt(t) matches the stored lastPen point —
     // without this, a moved ring causes a spurious line on the first stroke.
-    if (ss.ringX !== undefined) state.ringX = ss.ringX;
-    if (ss.ringY !== undefined) state.ringY = ss.ringY;
+    if (ss.ringX    !== undefined) state.ringX    = ss.ringX;
+    if (ss.ringY    !== undefined) state.ringY    = ss.ringY;
+    if (ss.cogPhase !== undefined) state.cogPhase = ss.cogPhase;
     // Sync all UI controls to match restored state
     syncAllUI();
   }
@@ -1282,6 +1286,7 @@
           t:           state.t,
           ringX:       state.ringX,
           ringY:       state.ringY,
+          cogPhase:    state.cogPhase,
           customColor: customColor,
         },
       }));
@@ -1310,8 +1315,9 @@
         if (s.bg        !== undefined) state.bg        = s.bg;
         if (s.speed     !== undefined) state.speed     = s.speed;
         if (s.t         !== undefined) state.t         = s.t;
-        if (s.ringX       !== undefined) state.ringX  = s.ringX;
-        if (s.ringY       !== undefined) state.ringY  = s.ringY;
+        if (s.ringX       !== undefined) state.ringX    = s.ringX;
+        if (s.ringY       !== undefined) state.ringY    = s.ringY;
+        if (s.cogPhase    !== undefined) state.cogPhase = s.cogPhase;
         if (s.customColor !== undefined) {
           customColor = s.customColor;
           // Sync the nested input value once it exists (set after colors render)
@@ -1470,8 +1476,31 @@
       colorPickerInput = document.createElement('input');
       colorPickerInput.type = 'color';
       colorPickerInput.value = customColor || '#ff0000';
-      colorPickerInput.addEventListener('input',  () => applyCustomColor(colorPickerInput.value));
-      colorPickerInput.addEventListener('change', () => applyCustomColor(colorPickerInput.value));
+      const dismissPickerHint = () => {
+        clearTimeout(hintTimer);
+        document.getElementById('hint').classList.remove('show');
+      };
+      // Only show the hint on a real user tap — not on iOS programmatic re-focus after picker closes
+      let pickerTapped = false;
+      el.addEventListener('pointerdown', () => { pickerTapped = true; });
+      el.addEventListener('touchstart',  () => { pickerTapped = true; }, { passive: true });
+      colorPickerInput.addEventListener('focus', () => {
+        if (pickerTapped) {
+          pickerTapped = false;
+          showHint('Opening color picker…', 8000);
+        }
+      });
+      // Dismiss as soon as the picker closes (blur / cancel) or a color is picked
+      colorPickerInput.addEventListener('blur',   dismissPickerHint);
+      colorPickerInput.addEventListener('cancel', dismissPickerHint);
+      colorPickerInput.addEventListener('input', () => {
+        dismissPickerHint();
+        applyCustomColor(colorPickerInput.value);
+      });
+      colorPickerInput.addEventListener('change', () => {
+        dismissPickerHint();
+        applyCustomColor(colorPickerInput.value);
+      });
       el.appendChild(colorPickerInput);
       colorsEl.appendChild(el);
       customSwatchEl = el;
@@ -1517,6 +1546,7 @@
       if (type !== state.shapeType) {
         state.shapeType = type;
         state.t = 0;
+        state.cogPhase = 0;
         breakSegment();
         updateShapeUI();
         drawPenPreview();
@@ -1537,8 +1567,23 @@
   cogSizeSlider.addEventListener('input', () => {
     const newStep = parseInt(cogSizeSlider.value, 10);
     if (newStep === state.sizeStep) return;
+
+    // Compensate cogPhase so the cog body orientation stays constant while only size changes.
+    // θ = ±k·t + cogPhase  →  to keep θ fixed when k changes, adjust cogPhase by −Δk·t.
+    // ring mode:   θ = -k·t + cogPhase,  delta = (k_new - k_old)·t
+    // circle mode: θ = +k·t + π + cogPhase, delta = (k_old - k_new)·t
+    const ringR = getR(); // call before updating sizeStep
+    const effR = step => ringR * (state.shapeType === 'round'
+      ? sizePercentFromStep(step) / 100
+      : interpolatedNonRoundScale(state.shapeType, step));
+    const rOld = effR(state.sizeStep);
+    const rNew = effR(newStep);
+    const kOld = state.fixed === 'circle' ? (ringR + rOld) / rOld : (ringR - rOld) / rOld;
+    const kNew = state.fixed === 'circle' ? (ringR + rNew) / rNew : (ringR - rNew) / rNew;
+    const sign  = state.fixed === 'circle' ? -1 : 1;
+    state.cogPhase += sign * (kNew - kOld) * state.t;
+
     state.sizeStep = newStep;
-    state.t = 0;
     breakSegment();
     updateSizeLabel();
     drawPenPreview();
@@ -1584,6 +1629,7 @@
       el.classList.add('active');
       state.fixed = el.dataset.fixed;
       state.t = 0;
+      state.cogPhase = 0;
       breakSegment();
     });
   });
@@ -1620,6 +1666,7 @@
     currentIdx = -1;
     lastPen = null;
     state.t = 0;
+    state.cogPhase = 0;
     trailCtx.clearRect(0, 0, W, H);
     syncNavBtns();
     try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
