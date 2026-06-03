@@ -18,8 +18,8 @@
   body { background: #fff; transition: background 0.25s, color 0.25s; }
   body.dark { background: #000; color: #eee; }
 
-  #canvas-wrap { position: fixed; inset: 0; }
-  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #canvas-wrap { position: fixed; inset: 0; pointer-events: none; }
+  canvas { position: fixed; touch-action: none; display: block; pointer-events: auto; }
 
   /* Top buttons */
   .top-btn {
@@ -33,15 +33,52 @@
   }
   body.dark .top-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
   #menu-btn { left: 16px; }
-  #lock-btn { right: 16px; }
+  #move-btn { right: 16px; }
   #menu-btn .bars { width: 22px; height: 16px; position: relative; }
   #menu-btn .bars i { position: absolute; left: 0; right: 0; height: 2px; background: currentColor; border-radius: 1px; }
   #menu-btn .bars i:nth-child(1) { top: 0; }
   #menu-btn .bars i:nth-child(2) { top: 7px; }
   #menu-btn .bars i:nth-child(3) { top: 14px; }
-  #lock-btn svg { width: 22px; height: 22px; }
-  #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #c8a700; }
-  body.dark #lock-btn.unlocked { background: #ffd400; color: #222; border-color: #ffd400; }
+  #move-btn svg { width: 22px; height: 22px; }
+  #move-btn.active { background: #ffd400; color: #222; border-color: #c8a700; }
+  body.dark #move-btn.active { background: #ffd400; color: #222; border-color: #ffd400; }
+
+  /* Move popup */
+  #move-popup {
+    position: fixed;
+    top: max(74px, calc(env(safe-area-inset-top) + 58px));
+    right: 8px;
+    background: rgba(255,255,255,0.97);
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.22);
+    z-index: 31;
+    display: flex; flex-direction: column; gap: 2px;
+    opacity: 0; pointer-events: none;
+    transform: scale(0.88) translateY(-6px);
+    transform-origin: top right;
+    transition: opacity 0.16s, transform 0.16s;
+  }
+  body.dark #move-popup { background: rgba(30,30,30,0.97); box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+  #move-popup.open { opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }
+  .mpbtn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; border-radius: 11px;
+    border: none; background: transparent; cursor: pointer;
+    font-size: 13px; font-family: inherit; color: #333;
+    white-space: nowrap; text-align: left;
+  }
+  body.dark .mpbtn { color: #eee; }
+  .mpbtn svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .mpbtn.active { background: #ffd400; color: #222; }
+  .mpbtn.active svg { color: #222; }
+  .mpbtn:not(.action):hover { background: rgba(0,0,0,0.06); }
+  body.dark .mpbtn:not(.action):hover { background: rgba(255,255,255,0.08); }
+  .mpbtn.action { color: #555; }
+  body.dark .mpbtn.action { color: #aaa; }
+  .mpbtn.action:hover { background: rgba(0,0,0,0.04); }
+  .mp-divider { height: 1px; background: rgba(0,0,0,0.08); margin: 3px 6px; }
+  body.dark .mp-divider { background: rgba(255,255,255,0.1); }
 
   /* Drawer */
   #drawer {
@@ -270,12 +307,66 @@
   </div>
 
   <button id="menu-btn" class="top-btn" aria-label="Menu"><div class="bars"><i></i><i></i><i></i></div></button>
-  <button id="lock-btn" class="top-btn" aria-label="Lock / Unlock ring">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="lock-icon">
-      <rect x="4.5" y="11" width="15" height="10" rx="2"/>
-      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+  <button id="move-btn" class="top-btn" aria-label="Move mode">
+    <!-- 4-way arrow -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v18M3 12h18"/>
+      <polyline points="9,6 12,3 15,6"/>
+      <polyline points="9,18 12,21 15,18"/>
+      <polyline points="6,9 3,12 6,15"/>
+      <polyline points="18,9 21,12 18,15"/>
     </svg>
   </button>
+
+  <div id="move-popup">
+    <!-- Move Ring -->
+    <button class="mpbtn" id="mp-move-ring" aria-label="Move Ring">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+        <polyline points="11,4 12,2 13,4"/>
+        <polyline points="11,20 12,22 13,20"/>
+        <polyline points="4,11 2,12 4,13"/>
+        <polyline points="20,11 22,12 20,13"/>
+      </svg>
+      Move Ring
+    </button>
+    <!-- Center Ring -->
+    <button class="mpbtn action" id="mp-center-ring" aria-label="Center Ring">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="2" x2="12" y2="7"/>
+        <line x1="12" y1="17" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="7" y2="12"/>
+        <line x1="17" y1="12" x2="22" y2="12"/>
+        <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+      </svg>
+      Center Ring
+    </button>
+    <div class="mp-divider"></div>
+    <!-- Move Background -->
+    <button class="mpbtn" id="mp-move-bg" aria-label="Move Background">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <path d="M12 8v8M8 12h8"/>
+        <polyline points="11,9 12,8 13,9"/>
+        <polyline points="11,15 12,16 13,15"/>
+        <polyline points="9,11 8,12 9,13"/>
+        <polyline points="15,11 16,12 15,13"/>
+      </svg>
+      Move Canvas
+    </button>
+    <!-- Center Background -->
+    <button class="mpbtn action" id="mp-center-bg" aria-label="Center Canvas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+      </svg>
+      Center Canvas
+    </button>
+  </div>
 
   <div class="float-controls">
     <button class="fbtn primary" id="fb-pause" aria-label="Play / Pause" title="Play / Pause">
@@ -371,7 +462,7 @@
           <input type="range" id="speed" min="1" max="20" value="6">
           <span class="val" id="speed-val">6</span>
         </div>
-        <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Tap the lock (top-right) to move the ring.</p>
+        <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Use the ✛ button (top-right) to move the ring or pan the canvas.</p>
       </div>
       <div class="section">
         <h3>Background</h3>
@@ -399,6 +490,10 @@
   const gearCtx  = gearCv.getContext('2d');
 
   let W = 0, H = 0, cx = 0, cy = 0;
+  let canvasCx = 0, canvasCy = 0;
+  let bgX = 0, bgY = 0;
+  let moveMode = null; // null | 'ring' | 'bg'
+  const BG_PAD = 0.05; // 5% extra drawable area on each side
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
   // Crayola-inspired 46-color palette in ROYGBIV arc, plus custom + no-color
@@ -879,7 +974,6 @@
     bg: 'black',
     speed: 6,
     paused: true,
-    locked: true,
     ringX: 0, ringY: 0,
     t: 0,
     cogPhase: 0,        // rotation offset — compensates for size changes so cog doesn't spin
@@ -891,20 +985,33 @@
   let currentIdx = -1;   // index of last visible segment; -1 = empty canvas
   let lastPen = null;
 
-  function ringCx() { return cx + state.ringX; }
-  function ringCy() { return cy + state.ringY; }
+  function ringCx() { return canvasCx + state.ringX; }
+  function ringCy() { return canvasCy + state.ringY; }
+
+  function applyBgPan() {
+    const left = -(W * BG_PAD) + bgX;
+    const top  = -(H * BG_PAD) + bgY;
+    [trailCv, gearCv].forEach(cv => {
+      cv.style.left = left + 'px';
+      cv.style.top  = top  + 'px';
+    });
+  }
 
   function resize() {
     W = window.innerWidth;
     H = window.innerHeight;
     cx = W / 2; cy = H / 2;
+    const CW = Math.round(W * (1 + 2 * BG_PAD));
+    const CH = Math.round(H * (1 + 2 * BG_PAD));
+    canvasCx = CW / 2; canvasCy = CH / 2;
     [trailCv, gearCv].forEach(cv => {
-      cv.width  = Math.floor(W * dpr);
-      cv.height = Math.floor(H * dpr);
-      cv.style.width  = W + 'px';
-      cv.style.height = H + 'px';
+      cv.width  = Math.floor(CW * dpr);
+      cv.height = Math.floor(CH * dpr);
+      cv.style.width  = CW + 'px';
+      cv.style.height = CH + 'px';
       cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
     });
+    applyBgPan();
     redrawTrail();
   }
 
@@ -974,7 +1081,7 @@
   }
 
   function redrawTrail() {
-    trailCtx.clearRect(0, 0, W, H);
+    trailCtx.clearRect(0, 0, trailCv.width / dpr, trailCv.height / dpr);
     if (currentIdx < 0) return;
     trailCtx.lineCap = 'round';
     trailCtx.lineJoin = 'round';
@@ -1058,7 +1165,7 @@
     const RX = ringCx(), RY = ringCy();
     gearCtx.lineWidth = 1.2;
     gearCtx.strokeStyle = lineColor;
-    if (!state.locked) gearCtx.setLineDash([6, 4]);
+    if (moveMode === 'ring') gearCtx.setLineDash([6, 4]);
 
     if (state.fixed === 'circle') {
       gearCtx.fillStyle = fill;
@@ -1125,7 +1232,7 @@
   }
 
   function drawGears() {
-    gearCtx.clearRect(0, 0, W, H);
+    gearCtx.clearRect(0, 0, gearCv.width / dpr, gearCv.height / dpr);
     const s = stateAt(state.t);
     drawFixedCircle(s.R);
     drawCog(s);
@@ -1287,6 +1394,8 @@
           ringX:       state.ringX,
           ringY:       state.ringY,
           cogPhase:    state.cogPhase,
+          bgX,
+          bgY,
           customColor: customColor,
         },
       }));
@@ -1315,9 +1424,11 @@
         if (s.bg        !== undefined) state.bg        = s.bg;
         if (s.speed     !== undefined) state.speed     = s.speed;
         if (s.t         !== undefined) state.t         = s.t;
-        if (s.ringX       !== undefined) state.ringX    = s.ringX;
-        if (s.ringY       !== undefined) state.ringY    = s.ringY;
-        if (s.cogPhase    !== undefined) state.cogPhase = s.cogPhase;
+        if (s.ringX    !== undefined) state.ringX    = s.ringX;
+        if (s.ringY    !== undefined) state.ringY    = s.ringY;
+        if (s.cogPhase !== undefined) state.cogPhase = s.cogPhase;
+        if (s.bgX      !== undefined) bgX = s.bgX;
+        if (s.bgY      !== undefined) bgY = s.bgY;
         if (s.customColor !== undefined) {
           customColor = s.customColor;
           // Sync the nested input value once it exists (set after colors render)
@@ -1361,7 +1472,7 @@
     if (!prev) prev = now;
     const dt = Math.min(0.05, (now - prev) / 1000);
     prev = now;
-    if (!state.paused && state.locked) step(dt * state.speed * 0.5);
+    if (!state.paused) step(dt * state.speed * 0.5);
     drawGears();
     requestAnimationFrame(frame);
   }
@@ -1369,27 +1480,35 @@
   // ---- Drag ----
   let dragging = false, dragMode = null, lastAngle = 0;
   let moveAnchorX = 0, moveAnchorY = 0;
-  let autoRelockTimer = null;
-  const AUTO_RELOCK_MS = 4000;
 
   function pointerXY(e) {
     if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
     return { x: e.clientX, y: e.clientY };
   }
   function pointerAngle(e) {
+    // Convert screen coords to canvas coords for angle calculation
     const p = pointerXY(e);
-    return Math.atan2(p.y - ringCy(), p.x - ringCx());
+    const canvasLeft = -(W * BG_PAD) + bgX;
+    const canvasTop  = -(H * BG_PAD) + bgY;
+    return Math.atan2((p.y - canvasTop) - ringCy(), (p.x - canvasLeft) - ringCx());
   }
   function onDown(e) {
     const p = pointerXY(e);
-    if (!state.locked) {
+    if (moveMode === 'ring') {
       e.preventDefault();
       dragging = true;
-      dragMode = 'move';
+      dragMode = 'moveRing';
       moveAnchorX = p.x - state.ringX;
       moveAnchorY = p.y - state.ringY;
-      clearTimeout(autoRelockTimer);
       breakSegment();
+      return;
+    }
+    if (moveMode === 'bg') {
+      e.preventDefault();
+      dragging = true;
+      dragMode = 'moveBg';
+      moveAnchorX = p.x - bgX;
+      moveAnchorY = p.y - bgY;
       return;
     }
     if (!state.paused) return;
@@ -1401,12 +1520,18 @@
   function onMove(e) {
     if (!dragging) return;
     e.preventDefault();
-    if (dragMode === 'move') {
-      const p = pointerXY(e);
+    const p = pointerXY(e);
+    if (dragMode === 'moveRing') {
       state.ringX = p.x - moveAnchorX;
       state.ringY = p.y - moveAnchorY;
       state.ringX = Math.max(-cx, Math.min(cx, state.ringX));
       state.ringY = Math.max(-cy, Math.min(cy, state.ringY));
+    } else if (dragMode === 'moveBg') {
+      bgX = p.x - moveAnchorX;
+      bgY = p.y - moveAnchorY;
+      bgX = Math.max(-(W * BG_PAD), Math.min(W * BG_PAD, bgX));
+      bgY = Math.max(-(H * BG_PAD), Math.min(H * BG_PAD, bgY));
+      applyBgPan();
     } else if (dragMode === 'rotate') {
       const a = pointerAngle(e);
       let delta = a - lastAngle;
@@ -1417,23 +1542,11 @@
     }
   }
   function onUp() {
-    if (dragging && dragMode === 'move') {
-      scheduleAutoRelock();
-    } else if (dragging && dragMode === 'rotate') {
-      saveSession(); // commit the drawn segment on finger lift
+    if (dragging && dragMode === 'rotate') {
+      saveSession();
     }
     dragging = false;
     dragMode = null;
-  }
-  function scheduleAutoRelock() {
-    clearTimeout(autoRelockTimer);
-    autoRelockTimer = setTimeout(() => {
-      if (!state.locked) {
-        state.locked = true;
-        updateLockUI();
-        showHint('Ring locked', 1100);
-      }
-    }, AUTO_RELOCK_MS);
   }
   gearCv.addEventListener('touchstart', onDown, { passive: false });
   gearCv.addEventListener('touchmove',  onMove, { passive: false });
@@ -1667,7 +1780,8 @@
     lastPen = null;
     state.t = 0;
     state.cogPhase = 0;
-    trailCtx.clearRect(0, 0, W, H);
+    bgX = 0; bgY = 0; applyBgPan();
+    trailCtx.clearRect(0, 0, trailCv.width / dpr, trailCv.height / dpr);
     syncNavBtns();
     try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
   }
@@ -1739,32 +1853,65 @@
   });
   syncPauseIcon();
 
-  // ---- UI: Lock button ----
-  const LOCK_CLOSED =
-    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
-    '<path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
-  const LOCK_OPEN =
-    '<rect x="4.5" y="11" width="15" height="10" rx="2"/>' +
-    '<path d="M8 11V7a4 4 0 0 1 7.5-1.5"/>';
-  function updateLockUI() {
-    const btn = document.getElementById('lock-btn');
-    const icon = document.getElementById('lock-icon');
-    icon.innerHTML = state.locked ? LOCK_CLOSED : LOCK_OPEN;
-    btn.classList.toggle('unlocked', !state.locked);
+  // ---- UI: Move mode button + popup ----
+  const moveBtn   = document.getElementById('move-btn');
+  const movePopup = document.getElementById('move-popup');
+
+  function setMoveMode(mode) {
+    moveMode = mode;
+    // Update popup button highlights
+    document.getElementById('mp-move-ring').classList.toggle('active', mode === 'ring');
+    document.getElementById('mp-move-bg').classList.toggle('active',   mode === 'bg');
+    // Highlight main button when any mode is active
+    moveBtn.classList.toggle('active', mode !== null);
   }
-  document.getElementById('lock-btn').addEventListener('click', () => {
-    state.locked = !state.locked;
-    updateLockUI();
-    if (!state.locked) {
-      pauseAutoDraw('Paused while ring is unlocked', 1600);
-      showHint('Drag to move ring · Auto-locks after 4s', 2000);
-      scheduleAutoRelock();
-    } else {
-      clearTimeout(autoRelockTimer);
-      showHint('Ring locked', 900);
+
+  function closeMovePopup() {
+    movePopup.classList.remove('open');
+  }
+
+  moveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    movePopup.classList.toggle('open');
+  });
+
+  document.getElementById('mp-move-ring').addEventListener('click', () => {
+    const next = moveMode === 'ring' ? null : 'ring';
+    setMoveMode(next);
+    if (next === 'ring') {
+      pauseAutoDraw('Paused while moving ring', 1400);
+      showHint('Drag to move ring', 1600);
+    }
+    closeMovePopup();
+  });
+
+  document.getElementById('mp-center-ring').addEventListener('click', () => {
+    state.ringX = 0; state.ringY = 0;
+    breakSegment();
+    showHint('Ring centered', 1000);
+    closeMovePopup();
+  });
+
+  document.getElementById('mp-move-bg').addEventListener('click', () => {
+    const next = moveMode === 'bg' ? null : 'bg';
+    setMoveMode(next);
+    if (next === 'bg') showHint('Drag to pan canvas', 1600);
+    closeMovePopup();
+  });
+
+  document.getElementById('mp-center-bg').addEventListener('click', () => {
+    bgX = 0; bgY = 0;
+    applyBgPan();
+    showHint('Canvas centered', 1000);
+    closeMovePopup();
+  });
+
+  // Close popup when tapping elsewhere
+  document.addEventListener('pointerdown', (e) => {
+    if (!movePopup.contains(e.target) && e.target !== moveBtn) {
+      closeMovePopup();
     }
   });
-  updateLockUI();
 
   // ---- UI: Tabs ----
   function switchTab(name) {
