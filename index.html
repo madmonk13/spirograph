@@ -465,13 +465,6 @@
         <p class="note">Tap ▶ to auto-rotate. While paused, drag the canvas to rotate by hand. Use the ✛ button (top-right) to move the ring or pan the canvas.</p>
       </div>
       <div class="section">
-        <h3>Background</h3>
-        <div class="row">
-          <div class="chip" data-bg="white">White</div>
-          <div class="chip active" data-bg="black">Black</div>
-        </div>
-      </div>
-      <div class="section">
         <div class="actions">
           <button class="btn" id="clear">Clear</button>
           <button class="btn primary" id="save">Export Image</button>
@@ -1088,9 +1081,11 @@
     for (let si = 0; si <= currentIdx; si++) {
       const seg = segments[si];
       if (seg.points.length < 2) continue;
-      if (seg.state.color === null) continue; // no-color segment — invisible
+      if (seg.state.color === null) continue;
       trailCtx.strokeStyle = seg.state.color;
       trailCtx.lineWidth = seg.state.penWidth;
+      trailCtx.strokeStyle = seg.state.color;
+      trailCtx.lineWidth   = seg.state.penWidth;
       trailCtx.beginPath();
       trailCtx.moveTo(seg.points[0].x, seg.points[0].y);
       for (let pi = 1; pi < seg.points.length; pi++) {
@@ -1238,6 +1233,8 @@
     drawCog(s);
   }
 
+
+
   function captureState() {
     return {
       color: state.color,
@@ -1258,9 +1255,9 @@
     const dt = deltaT / subdivs;
     const drawing = state.color !== null;
     if (drawing) {
-      trailCtx.lineCap = 'round';
-      trailCtx.lineJoin = 'round';
-      trailCtx.lineWidth = state.penWidth;
+      trailCtx.lineCap    = 'round';
+      trailCtx.lineJoin   = 'round';
+      trailCtx.lineWidth  = state.penWidth;
       trailCtx.strokeStyle = state.color;
     }
     for (let i = 0; i < subdivs; i++) {
@@ -1343,9 +1340,9 @@
     document.querySelectorAll('[data-bg]').forEach(el => {
       el.classList.toggle('active', el.dataset.bg === state.bg);
     });
-    document.body.classList.toggle('dark', state.bg === 'black');
+    document.body.classList.add('dark');
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', state.bg === 'black' ? '#000000' : '#ffffff');
+    if (meta) meta.setAttribute('content', '#000000');
     // Cog size slider
     const cogSl = document.getElementById('cog-size');
     const cogVal = document.getElementById('cog-size-val');
@@ -1753,7 +1750,7 @@
       document.querySelectorAll('[data-bg]').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
       state.bg = el.dataset.bg;
-      document.body.classList.toggle('dark', state.bg === 'black');
+      document.body.classList.toggle('dark', true);
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', state.bg === 'black' ? '#000000' : '#ffffff');
     });
