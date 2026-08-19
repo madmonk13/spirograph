@@ -261,6 +261,23 @@
   .color.no-color::before { transform: translateY(-50%) rotate(45deg); }
   .color.no-color::after  { transform: translateY(-50%) rotate(-45deg); }
 
+  /* Gradient color swatches */
+  .grad-swatch {
+    position: relative; height: 44px; border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.12); overflow: hidden; cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  body.dark .grad-swatch { border-color: rgba(255,255,255,0.15); }
+  .grad-swatch input[type=color] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer; border: none; padding: 0;
+  }
+  .grad-label {
+    font-size: 11px; text-align: center; margin-top: 5px; color: #888;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  body.dark .grad-label { color: #999; }
+
   /* Pen position preview */
   #pen-preview {
     display: flex; justify-content: center; margin: 12px 0 4px;
@@ -409,6 +426,48 @@
         <div class="slider-wrap">
           <input type="range" id="pen-width" min="0.5" max="8" step="0.5" value="2">
           <span class="val" id="pen-width-val">2</span>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Gradient</h3>
+        <div class="row">
+          <div class="chip" id="gradient-toggle">Off</div>
+        </div>
+        <div id="gradient-controls" style="display:none">
+          <div class="row" id="gradient-type-btns" style="margin-top:10px">
+            <div class="chip active" data-gtype="linear">Linear</div>
+            <div class="chip" data-gtype="circular">Circular</div>
+            <div class="chip" data-gtype="length">Length</div>
+          </div>
+          <div id="gradient-linear-opts" style="margin-top:10px">
+            <div class="slider-wrap">
+              <input type="range" id="gradient-angle" min="0" max="359" step="1" value="0">
+              <span class="val" id="gradient-angle-val">0°</span>
+            </div>
+          </div>
+          <div id="gradient-length-opts" style="display:none; margin-top:10px">
+            <div class="slider-wrap" style="margin-bottom:8px">
+              <input type="range" id="gradient-revs" min="0.1" max="10" step="0.1" value="2">
+              <span class="val" id="gradient-revs-val">2</span>
+            </div>
+            <div class="row">
+              <div class="chip" id="gradient-bounce-toggle">↔ Off</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:12px; margin-top:12px">
+            <div style="flex:1">
+              <div class="grad-swatch" id="grad-start-swatch" style="background:#FF1F1F">
+                <input type="color" id="grad-start-input" value="#FF1F1F">
+              </div>
+              <div class="grad-label">Start</div>
+            </div>
+            <div style="flex:1">
+              <div class="grad-swatch" id="grad-end-swatch" style="background:#1F7DFF">
+                <input type="color" id="grad-end-input" value="#1F7DFF">
+              </div>
+              <div class="grad-label">End</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -970,6 +1029,14 @@
     ringX: 0, ringY: 0,
     t: 0,
     cogPhase: 0,        // rotation offset — compensates for size changes so cog doesn't spin
+    // Gradient
+    gradient: false,
+    gradientType: 'linear',   // 'linear' | 'circular' | 'length'
+    gradientAngle: 0,          // degrees, for linear
+    gradientRevs: 2,           // revolutions per cycle, for length
+    gradientBounce: false,     // ping-pong direction, for length
+    gradientStart: '#FF1F1F',
+    gradientEnd: '#1F7DFF',
   };
   document.body.classList.add('dark');
 
@@ -1073,6 +1140,43 @@
     return { gx, gy, px, py, R: ringR, rollR: R, r: scale, scale, theta, cog };
   }
 
+  // ---- Gradient utilities ----
+  function lerpColor(c1, c2, t) {
+    t = Math.max(0, Math.min(1, t));
+    const r1 = parseInt(c1.slice(1,3), 16), g1 = parseInt(c1.slice(3,5), 16), b1 = parseInt(c1.slice(5,7), 16);
+    const r2 = parseInt(c2.slice(1,3), 16), g2 = parseInt(c2.slice(3,5), 16), b2 = parseInt(c2.slice(5,7), 16);
+    return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
+  }
+
+  function gradientTForPoint(px, py, drawT, gs) {
+    // gs: object with gradientType, gradientAngle, gradientRevs, gradientBounce,
+    //     gradientRingR, ringX, ringY
+    if (gs.gradientType === 'linear') {
+      const rad = (gs.gradientAngle || 0) * Math.PI / 180;
+      const dx = px - canvasCx, dy = py - canvasCy;
+      const proj = dx * Math.cos(rad) + dy * Math.sin(rad);
+      const maxProj = Math.abs(canvasCx * Math.cos(rad)) + Math.abs(canvasCy * Math.sin(rad));
+      return maxProj > 0 ? (proj + maxProj) / (2 * maxProj) : 0.5;
+    }
+    if (gs.gradientType === 'circular') {
+      const rcx = canvasCx + (gs.ringX || 0);
+      const rcy = canvasCy + (gs.ringY || 0);
+      const dist = Math.hypot(px - rcx, py - rcy);
+      const maxR = gs.gradientRingR != null ? gs.gradientRingR : getR();
+      return maxR > 0 ? Math.min(1, dist / maxR) : 0;
+    }
+    // 'length'
+    const revs = gs.gradientRevs || 2;
+    let tv = ((drawT || 0) / (2 * Math.PI * revs)) % 1;
+    if (tv < 0) tv += 1;
+    if (gs.gradientBounce) { tv *= 2; if (tv > 1) tv = 2 - tv; }
+    return tv;
+  }
+
+  function gradientColorAt(px, py, drawT, gs) {
+    return lerpColor(gs.gradientStart, gs.gradientEnd, gradientTForPoint(px, py, drawT, gs));
+  }
+
   function redrawTrail() {
     trailCtx.clearRect(0, 0, trailCv.width / dpr, trailCv.height / dpr);
     if (currentIdx < 0) return;
@@ -1082,16 +1186,27 @@
       const seg = segments[si];
       if (seg.points.length < 2) continue;
       if (seg.state.color === null) continue;
-      trailCtx.strokeStyle = seg.state.color;
       trailCtx.lineWidth = seg.state.penWidth;
-      trailCtx.strokeStyle = seg.state.color;
-      trailCtx.lineWidth   = seg.state.penWidth;
-      trailCtx.beginPath();
-      trailCtx.moveTo(seg.points[0].x, seg.points[0].y);
-      for (let pi = 1; pi < seg.points.length; pi++) {
-        trailCtx.lineTo(seg.points[pi].x, seg.points[pi].y);
+      if (seg.state.gradient && seg.state.gradientStart && seg.state.gradientEnd) {
+        // Draw point-by-point so each micro-segment gets its gradient color
+        for (let pi = 1; pi < seg.points.length; pi++) {
+          const pt  = seg.points[pi];
+          const drawT = (pt.t !== undefined) ? pt.t : (seg.state.t || 0);
+          trailCtx.strokeStyle = gradientColorAt(pt.x, pt.y, drawT, seg.state);
+          trailCtx.beginPath();
+          trailCtx.moveTo(seg.points[pi-1].x, seg.points[pi-1].y);
+          trailCtx.lineTo(pt.x, pt.y);
+          trailCtx.stroke();
+        }
+      } else {
+        trailCtx.strokeStyle = seg.state.color;
+        trailCtx.beginPath();
+        trailCtx.moveTo(seg.points[0].x, seg.points[0].y);
+        for (let pi = 1; pi < seg.points.length; pi++) {
+          trailCtx.lineTo(seg.points[pi].x, seg.points[pi].y);
+        }
+        trailCtx.stroke();
       }
-      trailCtx.stroke();
     }
   }
 
@@ -1236,17 +1351,28 @@
 
 
   function captureState() {
-    return {
-      color: state.color,
-      penWidth: state.penWidth,
-      penPos: state.penPos,
+    const cs = {
+      color:     state.color,
+      penWidth:  state.penWidth,
+      penPos:    state.penPos,
       shapeType: state.shapeType,
-      sizeStep: state.sizeStep,
-      t: state.t,
-      ringX: state.ringX,
-      ringY: state.ringY,
-      cogPhase: state.cogPhase,
+      sizeStep:  state.sizeStep,
+      t:         state.t,
+      ringX:     state.ringX,
+      ringY:     state.ringY,
+      cogPhase:  state.cogPhase,
+      gradient:  state.gradient,
     };
+    if (state.gradient) {
+      cs.gradientType   = state.gradientType;
+      cs.gradientAngle  = state.gradientAngle;
+      cs.gradientRevs   = state.gradientRevs;
+      cs.gradientBounce = state.gradientBounce;
+      cs.gradientStart  = state.gradientStart;
+      cs.gradientEnd    = state.gradientEnd;
+      if (state.gradientType === 'circular') cs.gradientRingR = getR();
+    }
+    return cs;
   }
 
   function step(deltaT) {
@@ -1255,10 +1381,10 @@
     const dt = deltaT / subdivs;
     const drawing = state.color !== null;
     if (drawing) {
-      trailCtx.lineCap    = 'round';
-      trailCtx.lineJoin   = 'round';
-      trailCtx.lineWidth  = state.penWidth;
-      trailCtx.strokeStyle = state.color;
+      trailCtx.lineCap   = 'round';
+      trailCtx.lineJoin  = 'round';
+      trailCtx.lineWidth = state.penWidth;
+      if (!state.gradient) trailCtx.strokeStyle = state.color;
     }
     for (let i = 0; i < subdivs; i++) {
       state.t += dt;
@@ -1266,16 +1392,19 @@
       if (lastPen === null) {
         // Start a new segment — discard any forward history first
         if (currentIdx < segments.length - 1) segments.splice(currentIdx + 1);
-        segments.push({ points: [{ x: s.px, y: s.py }], state: captureState() });
+        segments.push({ points: [{ x: s.px, y: s.py, t: state.t }], state: captureState() });
         currentIdx = segments.length - 1;
       } else {
         if (drawing) {
+          if (state.gradient) {
+            trailCtx.strokeStyle = gradientColorAt(s.px, s.py, state.t, state);
+          }
           trailCtx.beginPath();
           trailCtx.moveTo(lastPen.x, lastPen.y);
           trailCtx.lineTo(s.px, s.py);
           trailCtx.stroke();
         }
-        segments[currentIdx].points.push({ x: s.px, y: s.py });
+        segments[currentIdx].points.push({ x: s.px, y: s.py, t: state.t });
         segments[currentIdx].state.t = state.t;
       }
       lastPen = { x: s.px, y: s.py };
@@ -1364,6 +1493,7 @@
     const spVal = document.getElementById('speed-val');
     if (spSl) { spSl.value = state.speed; spVal.textContent = state.speed; }
     drawPenPreview();
+    updateGradientUI();
   }
 
   // ---- Session persistence ----
@@ -1393,7 +1523,14 @@
           cogPhase:    state.cogPhase,
           bgX,
           bgY,
-          customColor: customColor,
+          customColor:    customColor,
+          gradient:       state.gradient,
+          gradientType:   state.gradientType,
+          gradientAngle:  state.gradientAngle,
+          gradientRevs:   state.gradientRevs,
+          gradientBounce: state.gradientBounce,
+          gradientStart:  state.gradientStart,
+          gradientEnd:    state.gradientEnd,
         },
       }));
     } catch(e) { /* storage full or unavailable — fail silently */ }
@@ -1431,6 +1568,13 @@
           // Sync the nested input value once it exists (set after colors render)
           if (colorPickerInput && customColor) colorPickerInput.value = customColor;
         }
+        if (s.gradient      !== undefined) state.gradient      = s.gradient;
+        if (s.gradientType  !== undefined) state.gradientType  = s.gradientType;
+        if (s.gradientAngle !== undefined) state.gradientAngle = s.gradientAngle;
+        if (s.gradientRevs  !== undefined) state.gradientRevs  = s.gradientRevs;
+        if (s.gradientBounce !== undefined) state.gradientBounce = s.gradientBounce;
+        if (s.gradientStart !== undefined) state.gradientStart = s.gradientStart;
+        if (s.gradientEnd   !== undefined) state.gradientEnd   = s.gradientEnd;
       }
 
       // lastPen intentionally NOT restored — step() will start a fresh segment
@@ -1909,6 +2053,96 @@
       closeMovePopup();
     }
   });
+
+  // ---- UI: Gradient ----
+  const gradientToggleBtn  = document.getElementById('gradient-toggle');
+  const gradientControlsEl = document.getElementById('gradient-controls');
+  const gradientLinearOpts = document.getElementById('gradient-linear-opts');
+  const gradientLengthOpts = document.getElementById('gradient-length-opts');
+  const gradStartSwatch    = document.getElementById('grad-start-swatch');
+  const gradEndSwatch      = document.getElementById('grad-end-swatch');
+  const gradStartInput     = document.getElementById('grad-start-input');
+  const gradEndInput       = document.getElementById('grad-end-input');
+
+  function updateGradientUI() {
+    const on = state.gradient;
+    gradientToggleBtn.textContent = on ? 'On' : 'Off';
+    gradientToggleBtn.classList.toggle('active', on);
+    gradientControlsEl.style.display = on ? '' : 'none';
+    if (!on) return;
+    document.querySelectorAll('[data-gtype]').forEach(el =>
+      el.classList.toggle('active', el.dataset.gtype === state.gradientType));
+    gradientLinearOpts.style.display = state.gradientType === 'linear' ? '' : 'none';
+    gradientLengthOpts.style.display = state.gradientType === 'length' ? '' : 'none';
+    const angSl  = document.getElementById('gradient-angle');
+    const revsSl = document.getElementById('gradient-revs');
+    if (angSl)  { angSl.value  = state.gradientAngle; document.getElementById('gradient-angle-val').textContent = state.gradientAngle + '°'; }
+    if (revsSl) { revsSl.value = state.gradientRevs;  document.getElementById('gradient-revs-val').textContent = state.gradientRevs; }
+    const bounceBtn = document.getElementById('gradient-bounce-toggle');
+    if (bounceBtn) { bounceBtn.textContent = state.gradientBounce ? '↔ On' : '↔ Off'; bounceBtn.classList.toggle('active', state.gradientBounce); }
+    gradStartSwatch.style.background = state.gradientStart;
+    gradEndSwatch.style.background   = state.gradientEnd;
+    gradStartInput.value = state.gradientStart;
+    gradEndInput.value   = state.gradientEnd;
+  }
+
+  gradientToggleBtn.addEventListener('click', () => {
+    state.gradient = !state.gradient;
+    breakSegment();
+    updateGradientUI();
+    saveSession();
+  });
+
+  document.querySelectorAll('[data-gtype]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.gradientType = el.dataset.gtype;
+      breakSegment();
+      updateGradientUI();
+      saveSession();
+    });
+  });
+
+  document.getElementById('gradient-angle').addEventListener('input', () => {
+    state.gradientAngle = parseInt(document.getElementById('gradient-angle').value, 10);
+    document.getElementById('gradient-angle-val').textContent = state.gradientAngle + '°';
+    breakSegment();
+  });
+
+  document.getElementById('gradient-revs').addEventListener('input', () => {
+    state.gradientRevs = parseFloat(document.getElementById('gradient-revs').value);
+    document.getElementById('gradient-revs-val').textContent = state.gradientRevs;
+    breakSegment();
+  });
+
+  document.getElementById('gradient-bounce-toggle').addEventListener('click', () => {
+    state.gradientBounce = !state.gradientBounce;
+    breakSegment();
+    updateGradientUI();
+    saveSession();
+  });
+
+  function wireGradColorPicker(inputEl, swatchEl, isStart) {
+    let pickerTapped = false;
+    swatchEl.addEventListener('pointerdown', () => { pickerTapped = true; });
+    swatchEl.addEventListener('touchstart',  () => { pickerTapped = true; }, { passive: true });
+    inputEl.addEventListener('focus', () => {
+      if (pickerTapped) { pickerTapped = false; showHint('Opening color picker…', 8000); }
+    });
+    const dismiss = () => { clearTimeout(hintTimer); document.getElementById('hint').classList.remove('show'); };
+    inputEl.addEventListener('blur',   dismiss);
+    inputEl.addEventListener('cancel', dismiss);
+    const apply = () => {
+      dismiss();
+      const hex = inputEl.value;
+      swatchEl.style.background = hex;
+      if (isStart) state.gradientStart = hex; else state.gradientEnd = hex;
+      breakSegment();
+    };
+    inputEl.addEventListener('input',  apply);
+    inputEl.addEventListener('change', () => { apply(); saveSession(); });
+  }
+  wireGradColorPicker(gradStartInput, gradStartSwatch, true);
+  wireGradColorPicker(gradEndInput,   gradEndSwatch,   false);
 
   // ---- UI: Tabs ----
   function switchTab(name) {
