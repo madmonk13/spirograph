@@ -389,9 +389,6 @@
     <button class="fbtn primary" id="fb-pause" aria-label="Play / Pause" title="Play / Pause">
       <svg viewBox="0 0 24 24" fill="currentColor" id="pause-icon"><polygon points="7,4 20,12 7,20" /></svg>
     </button>
-    <button class="fbtn small" id="fb-clear" aria-label="Clear" title="Clear">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-    </button>
   </div>
 
   <div class="float-controls-left">
@@ -400,6 +397,12 @@
     </button>
     <button class="fbtn small" id="fb-forward" disabled aria-label="Forward" title="Forward (⌘⇧Z)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <button class="fbtn small" id="fb-eye" aria-label="Toggle ring visibility" title="Toggle ring visibility">
+      <svg id="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
     </button>
   </div>
 
@@ -544,8 +547,9 @@
   let W = 0, H = 0, cx = 0, cy = 0;
   let canvasCx = 0, canvasCy = 0;
   let bgX = 0, bgY = 0;
-  let moveMode = null; // null | 'ring' | 'bg'
-  const BG_PAD = 0.05; // 5% extra drawable area on each side
+  let moveMode = null;    // null | 'ring' | 'bg'
+  let gearVisible = true; // eye toggle
+  const BG_PAD = 0.5; // 50% extra drawable area on each side → canvas is 2× viewport
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
   // Crayola-inspired 46-color palette in ROYGBIV arc, plus custom + no-color
@@ -1343,6 +1347,7 @@
 
   function drawGears() {
     gearCtx.clearRect(0, 0, gearCv.width / dpr, gearCv.height / dpr);
+    if (!gearVisible) return;
     const s = stateAt(state.t);
     drawFixedCircle(s.R);
     drawCog(s);
@@ -1982,7 +1987,12 @@
   });
   document.getElementById('fb-back').addEventListener('click', navigateBack);
   document.getElementById('fb-forward').addEventListener('click', navigateForward);
-  document.getElementById('fb-clear').addEventListener('click', clearAll);
+  document.getElementById('fb-eye').addEventListener('click', () => {
+    gearVisible = !gearVisible;
+    const EYE_OPEN = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    const EYE_SHUT = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    document.getElementById('eye-icon').innerHTML = gearVisible ? EYE_OPEN : EYE_SHUT;
+  });
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
