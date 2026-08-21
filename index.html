@@ -549,7 +549,7 @@
   let bgX = 0, bgY = 0;
   let moveMode = null;    // null | 'ring' | 'bg'
   let gearVisible = true; // eye toggle
-  const BG_PAD = 0.5; // 50% extra drawable area on each side → canvas is 2× viewport
+  const BG_PAD = 0.1; // 10% extra on each side → canvas is 120% of viewport
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
   // Crayola-inspired 46-color palette in ROYGBIV arc, plus custom + no-color
@@ -1156,10 +1156,11 @@
     // gs: object with gradientType, gradientAngle, gradientRevs, gradientBounce,
     //     gradientRingR, ringX, ringY
     if (gs.gradientType === 'linear') {
+      // 0° = top→bottom, 90° = left→right, clockwise
       const rad = (gs.gradientAngle || 0) * Math.PI / 180;
       const dx = px - canvasCx, dy = py - canvasCy;
-      const proj = dx * Math.cos(rad) + dy * Math.sin(rad);
-      const maxProj = Math.abs(canvasCx * Math.cos(rad)) + Math.abs(canvasCy * Math.sin(rad));
+      const proj = dx * Math.sin(rad) + dy * Math.cos(rad);
+      const maxProj = Math.abs(canvasCx * Math.sin(rad)) + Math.abs(canvasCy * Math.cos(rad));
       return maxProj > 0 ? (proj + maxProj) / (2 * maxProj) : 0.5;
     }
     if (gs.gradientType === 'circular') {
@@ -1528,6 +1529,7 @@
           cogPhase:    state.cogPhase,
           bgX,
           bgY,
+          bgPad:          BG_PAD,
           customColor:    customColor,
           gradient:       state.gradient,
           gradientType:   state.gradientType,
@@ -1568,6 +1570,7 @@
         if (s.cogPhase !== undefined) state.cogPhase = s.cogPhase;
         if (s.bgX      !== undefined) bgX = s.bgX;
         if (s.bgY      !== undefined) bgY = s.bgY;
+        if (s.bgPad    !== undefined) BG_PAD = s.bgPad;
         if (s.customColor !== undefined) {
           customColor = s.customColor;
           // Sync the nested input value once it exists (set after colors render)
@@ -1670,8 +1673,8 @@
     if (dragMode === 'moveRing') {
       state.ringX = p.x - moveAnchorX;
       state.ringY = p.y - moveAnchorY;
-      state.ringX = Math.max(-cx, Math.min(cx, state.ringX));
-      state.ringY = Math.max(-cy, Math.min(cy, state.ringY));
+      state.ringX = Math.max(-canvasCx, Math.min(canvasCx, state.ringX));
+      state.ringY = Math.max(-canvasCy, Math.min(canvasCy, state.ringY));
     } else if (dragMode === 'moveBg') {
       bgX = p.x - moveAnchorX;
       bgY = p.y - moveAnchorY;
@@ -1688,9 +1691,7 @@
     }
   }
   function onUp() {
-    if (dragging && dragMode === 'rotate') {
-      saveSession();
-    }
+    if (dragging && dragMode === 'rotate') saveSession();
     dragging = false;
     dragMode = null;
   }
