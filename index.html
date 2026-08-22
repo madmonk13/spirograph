@@ -86,6 +86,7 @@
     width: 86%; max-width: 360px;
     background: #fff;
     transform: translateX(-102%); transition: transform 0.28s cubic-bezier(0.2,0.7,0.2,1);
+    will-change: transform;
     z-index: 40; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     box-shadow: 4px 0 24px rgba(0,0,0,0.15);
     padding: max(20px, env(safe-area-inset-top)) 20px 30px 20px;
@@ -119,7 +120,7 @@
   .chip {
     padding: 9px 14px; border-radius: 22px; border: 1px solid #ddd;
     background: #fff; color: #333; cursor: pointer; font-size: 13px;
-    transition: all 0.15s; user-select: none;
+    transition: color 0.15s, background 0.15s, border-color 0.15s; user-select: none;
     display: flex; align-items: center; gap: 5px;
   }
   #shape-btns .chip {
@@ -1077,6 +1078,7 @@
     });
     applyBgPan();
     redrawTrail();
+    markGearsDirty();
   }
 
   function availableR() {
@@ -1084,15 +1086,8 @@
   }
 
   function getR() {
-    const cog = getActiveCog();
     const avail = availableR();
-    if (state.fixed !== 'circle') return avail * state.sizeFrac;
-    if (cog.type === 'round') {
-      return (avail / (1 + 2 * cog.ratio)) * state.sizeFrac;
-    }
-    const stepFrac = interpolatedNonRoundScale(cog.type, state.sizeStep);
-    const maxRho   = COG_DEFS[cog.type].maxRho;
-    return (avail / (1 + 2 * stepFrac * maxRho)) * state.sizeFrac;
+    return avail * state.sizeFrac;
   }
 
   function stateAt(t) {
@@ -1346,7 +1341,12 @@
     gearCtx.stroke();
   }
 
+  let gearsDirty = true;
+  function markGearsDirty() { gearsDirty = true; }
+
   function drawGears() {
+    if (!gearsDirty) return;
+    gearsDirty = false;
     gearCtx.clearRect(0, 0, gearCv.width / dpr, gearCv.height / dpr);
     if (!gearVisible) return;
     const s = stateAt(state.t);
@@ -1396,6 +1396,8 @@
       state.t += dt;
       const s = stateAt(state.t);
       if (lastPen === null) {
+        // Cancel any pending state snapshot — the drawing segment captures the settings
+        clearTimeout(_snapshotTimer); _snapshotTimer = null;
         // Start a new segment — discard any forward history first
         if (currentIdx < segments.length - 1) segments.splice(currentIdx + 1);
         segments.push({ points: [{ x: s.px, y: s.py, t: state.t }], state: captureState() });
@@ -1423,11 +1425,28 @@
     saveSession();
   }
 
+  // scheduleSnapshot: like breakSegment, but also commits a state-only history
+  // entry after 400ms of inactivity, so setting changes are undoable even without drawing.
+  let _snapshotTimer = null;
+  function scheduleSnapshot() {
+    lastPen = null;
+    saveSession();
+    clearTimeout(_snapshotTimer);
+    _snapshotTimer = setTimeout(_commitSnapshot, 400);
+  }
+  function _commitSnapshot() {
+    _snapshotTimer = null;
+    if (currentIdx < segments.length - 1) segments.splice(currentIdx + 1);
+    segments.push({ points: [], state: captureState() });
+    currentIdx = segments.length - 1;
+    syncNavBtns();
+  }
+
+  const _backBtn = document.getElementById('fb-back');
+  const _fwdBtn  = document.getElementById('fb-forward');
   function syncNavBtns() {
-    const backBtn    = document.getElementById('fb-back');
-    const fwdBtn     = document.getElementById('fb-forward');
-    if (backBtn)    backBtn.disabled    = (currentIdx < 0);
-    if (fwdBtn)     fwdBtn.disabled     = (currentIdx >= segments.length - 1);
+    if (_backBtn) _backBtn.disabled = (currentIdx < 0);
+    if (_fwdBtn)  _fwdBtn.disabled  = (currentIdx >= segments.length - 1);
   }
 
   function restoreNavigatedState(seg) {
@@ -1506,7 +1525,14 @@
   const SESSION_KEY = 'mandaloop_session';
   let _sessionReady = false; // prevents saves during initialization overwriting stored data
 
+  let _saveTimer = null;
   function saveSession() {
+    if (!_sessionReady) return;
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(_flushSession, 400);
+  }
+  function _flushSession() {
+    _saveTimer = null;
     if (!_sessionReady) return;
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -1542,6 +1568,12 @@
       }));
     } catch(e) { /* storage full or unavailable — fail silently */ }
   }
+  // Flush immediately when the app is backgrounded or closed so state isn't lost
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _flushSession();
+  });
+  window.addEventListener('pagehide',    _flushSession);
+  window.addEventListener('beforeunload', _flushSession);
 
   function loadSession() {
     try {
@@ -1598,7 +1630,8 @@
     currentIdx--;
     if (currentIdx >= 0) {
       restoreNavigatedState(segments[currentIdx]);
-      lastPen = segments[currentIdx].points.at(-1);
+      const pts = segments[currentIdx].points;
+      lastPen = pts.length > 0 ? pts[pts.length - 1] : null;
     } else {
       // Went all the way back — empty canvas, restore to initial state
       lastPen = null;
@@ -1611,7 +1644,8 @@
     if (currentIdx >= segments.length - 1) return;
     currentIdx++;
     restoreNavigatedState(segments[currentIdx]);
-    lastPen = segments[currentIdx].points.at(-1);
+    const pts = segments[currentIdx].points;
+    lastPen = pts.length > 0 ? pts[pts.length - 1] : null;
     redrawTrail();
     syncNavBtns();
   }
@@ -1621,7 +1655,10 @@
     if (!prev) prev = now;
     const dt = Math.min(0.05, (now - prev) / 1000);
     prev = now;
-    if (!state.paused) step(dt * state.speed * 0.5);
+    if (!state.paused) {
+      step(dt * state.speed * 0.5);
+      gearsDirty = true;
+    }
     drawGears();
     requestAnimationFrame(frame);
   }
@@ -1675,12 +1712,14 @@
       state.ringY = p.y - moveAnchorY;
       state.ringX = Math.max(-canvasCx, Math.min(canvasCx, state.ringX));
       state.ringY = Math.max(-canvasCy, Math.min(canvasCy, state.ringY));
+      markGearsDirty();
     } else if (dragMode === 'moveBg') {
       bgX = p.x - moveAnchorX;
       bgY = p.y - moveAnchorY;
       bgX = Math.max(-(W * BG_PAD), Math.min(W * BG_PAD, bgX));
       bgY = Math.max(-(H * BG_PAD), Math.min(H * BG_PAD, bgY));
       applyBgPan();
+      markGearsDirty();
     } else if (dragMode === 'rotate') {
       const a = pointerAngle(e);
       let delta = a - lastAngle;
@@ -1688,6 +1727,7 @@
       if (delta < -Math.PI) delta += 2 * Math.PI;
       lastAngle = a;
       step(delta);
+      markGearsDirty();
     }
   }
   function onUp() {
@@ -1711,7 +1751,7 @@
   function applyCustomColor(hex) {
     customColor = hex;
     state.color = hex;
-    breakSegment();
+    scheduleSnapshot();
     colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
     if (customSwatchEl) {
       customSwatchEl.classList.add('active');
@@ -1774,7 +1814,7 @@
     el.setAttribute('aria-label', name);
     el.addEventListener('click', () => {
       state.color = hex;
-      breakSegment();
+      scheduleSnapshot();
       colorsEl.querySelectorAll('.color').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
       // Reset custom swatch back to rainbow when a named color is chosen
@@ -1807,7 +1847,8 @@
         state.shapeType = type;
         state.t = 0;
         state.cogPhase = 0;
-        breakSegment();
+        scheduleSnapshot();
+        markGearsDirty();
         updateShapeUI();
         drawPenPreview();
       }
@@ -1844,7 +1885,8 @@
     state.cogPhase += sign * (kNew - kOld) * state.t;
 
     state.sizeStep = newStep;
-    breakSegment();
+    scheduleSnapshot();
+    markGearsDirty();
     updateSizeLabel();
     drawPenPreview();
   });
@@ -1859,7 +1901,7 @@
   penPosSlider.addEventListener('input', () => {
     state.penPos = parseInt(penPosSlider.value, 10) / 100;
     penPosValEl.textContent = penPosSlider.value + '%';
-    breakSegment();
+    scheduleSnapshot();
     drawPenPreview();
   });
 
@@ -1872,7 +1914,7 @@
   penWidthSlider.addEventListener('input', () => {
     state.penWidth = parseFloat(penWidthSlider.value);
     penWidthValEl.textContent = state.penWidth;
-    breakSegment();
+    scheduleSnapshot();
   });
 
   function updateShapeUI() {
@@ -1890,7 +1932,8 @@
       state.fixed = el.dataset.fixed;
       state.t = 0;
       state.cogPhase = 0;
-      breakSegment();
+      scheduleSnapshot();
+      markGearsDirty();
     });
   });
 
@@ -1917,7 +1960,7 @@
     sl.addEventListener('input', update);
     update();
   }
-  bindSlider('size',  'size-val',  '%', v => { state.sizeFrac = v / 100; breakSegment(); });
+  bindSlider('size',  'size-val',  '%', v => { state.sizeFrac = v / 100; scheduleSnapshot(); markGearsDirty(); });
   bindSlider('speed', 'speed-val', '',  v => { state.speed = v; });
 
   // ---- UI: Drawer buttons ----
@@ -1993,6 +2036,7 @@
     const EYE_OPEN = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
     const EYE_SHUT = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
     document.getElementById('eye-icon').innerHTML = gearVisible ? EYE_OPEN : EYE_SHUT;
+    markGearsDirty();
   });
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
@@ -2099,37 +2143,34 @@
 
   gradientToggleBtn.addEventListener('click', () => {
     state.gradient = !state.gradient;
-    breakSegment();
+    scheduleSnapshot();
     updateGradientUI();
-    saveSession();
   });
 
   document.querySelectorAll('[data-gtype]').forEach(el => {
     el.addEventListener('click', () => {
       state.gradientType = el.dataset.gtype;
-      breakSegment();
+      scheduleSnapshot();
       updateGradientUI();
-      saveSession();
     });
   });
 
   document.getElementById('gradient-angle').addEventListener('input', () => {
     state.gradientAngle = parseInt(document.getElementById('gradient-angle').value, 10);
     document.getElementById('gradient-angle-val').textContent = state.gradientAngle + '°';
-    breakSegment();
+    scheduleSnapshot();
   });
 
   document.getElementById('gradient-revs').addEventListener('input', () => {
     state.gradientRevs = parseFloat(document.getElementById('gradient-revs').value);
     document.getElementById('gradient-revs-val').textContent = state.gradientRevs;
-    breakSegment();
+    scheduleSnapshot();
   });
 
   document.getElementById('gradient-bounce-toggle').addEventListener('click', () => {
     state.gradientBounce = !state.gradientBounce;
-    breakSegment();
+    scheduleSnapshot();
     updateGradientUI();
-    saveSession();
   });
 
   function wireGradColorPicker(inputEl, swatchEl, isStart) {
@@ -2147,10 +2188,10 @@
       const hex = inputEl.value;
       swatchEl.style.background = hex;
       if (isStart) state.gradientStart = hex; else state.gradientEnd = hex;
-      breakSegment();
+      scheduleSnapshot();
     };
     inputEl.addEventListener('input',  apply);
-    inputEl.addEventListener('change', () => { apply(); saveSession(); });
+    inputEl.addEventListener('change', apply);
   }
   wireGradColorPicker(gradStartInput, gradStartSwatch, true);
   wireGradColorPicker(gradEndInput,   gradEndSwatch,   false);
