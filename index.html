@@ -1532,7 +1532,12 @@
     _saveTimer = setTimeout(_flushSession, 400);
   }
   function _flushSession() {
-    _saveTimer = null;
+    // Commit any pending snapshot and cancel both timers before writing
+    clearTimeout(_saveTimer);   _saveTimer = null;
+    if (_snapshotTimer !== null) {
+      clearTimeout(_snapshotTimer);
+      _commitSnapshot();
+    }
     if (!_sessionReady) return;
     try {
       localStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -1651,6 +1656,7 @@
   }
 
   let prev = 0;
+  let _lastAutoSave = 0;
   function frame(now) {
     if (!prev) prev = now;
     const dt = Math.min(0.05, (now - prev) / 1000);
@@ -1658,6 +1664,11 @@
     if (!state.paused) {
       step(dt * state.speed * 0.5);
       gearsDirty = true;
+      // Autosave every 4 s while drawing so a refresh never loses much
+      if (now - _lastAutoSave > 4000) {
+        _lastAutoSave = now;
+        saveSession();
+      }
     }
     drawGears();
     requestAnimationFrame(frame);
@@ -2023,9 +2034,10 @@
     state.paused = !state.paused;
     syncPauseIcon();
     if (state.paused) {
-      saveSession(); // commit auto-draw segment on pause
+      _flushSession(); // commit immediately on pause — don't wait for debounce
       showHint('Paused — drag to rotate', 1500);
     } else {
+      _lastAutoSave = performance.now(); // reset so autosave doesn't fire immediately
       showHint('Auto-rotating', 900);
     }
   });
