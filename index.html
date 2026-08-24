@@ -1913,6 +1913,7 @@
     state.penPos = parseInt(penPosSlider.value, 10) / 100;
     penPosValEl.textContent = penPosSlider.value + '%';
     scheduleSnapshot();
+    markGearsDirty();
     drawPenPreview();
   });
 
